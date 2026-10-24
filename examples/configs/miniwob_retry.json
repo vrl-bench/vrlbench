@@ -1,0 +1,10 @@
+{
+  "workload": {"name": "miniwob", "cases": [{"task": "click-test", "episode": 0}], "params": {"headless": true, "trial_seed_mode": "paired_trial"}},
+  "memory": {"name": "retry"},
+  "model": {"name": "YOUR_MODEL_NAME", "api_key_env": "OPENAI_API_KEY", "request_options": {}},
+  "trials": 6,
+  "max_environment_steps": 128,
+  "require_provider_usage": true,
+  "timeout_seconds": 600,
+  "output_dir": "../../runs/miniwob_retry"
+}

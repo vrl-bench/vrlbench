@@ -1,0 +1,9 @@
+* text=auto
+*.json -text
+*.txt -text
+experiments/** -text -whitespace
+reproduce/** -whitespace
+reproduce/figure_sources/** -text
+*.svg -whitespace
+*.pdf binary
+*.png binary

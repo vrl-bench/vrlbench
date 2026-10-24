@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="473" viewBox="32 81 1376 452" role="img" aria-labelledby="title description">
+  <title id="title">VRL-Bench trial-and-error simulation loop</title>
+  <desc id="description">VRL-Bench simulates the trial-and-error work of a computer-control agent. Actions produce observations and outcomes. After a failed trial, a memory mechanism extracts experience for use in later attempts. The simulator records task success, recovery, trials-to-success and resource use to evaluate whether memory extraction and use improve task performance.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, "Helvetica Neue", Arial, sans-serif; fill: #253747; }
+      .title { font-size: 34px; font-weight: 600; }
+      .section { font-size: 23px; font-weight: 600; letter-spacing: .5px; }
+      .label { font-size: 26px; font-weight: 600; }
+      .body { font-size: 26px; }
+      .small { font-size: 21px; fill: #55697a; }
+      .node { fill: #ffffff; stroke: #a4b5c3; stroke-width: 1.7; }
+      .memory { fill: #eaf3f8; stroke: #6b98b7; stroke-width: 1.8; }
+      .edge { fill: none; stroke: #627d91; stroke-width: 2.3; marker-end: url(#arrow); stroke-linejoin: round; }
+    </style>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#627d91"/></marker>
+  </defs>
+  <rect width="1440" height="615" fill="#ffffff"/>
+  <g id="simulator" aria-label="VRL-Bench trial-and-error simulator">
+    <rect x="48" y="97" width="1344" height="424" rx="10" fill="#f9fcfe" stroke="#cddde8" stroke-width="1.5"/>
+    <text x="72" y="136" class="section" style="fill:#286386">VRL-BENCH SIMULATOR</text>
+    <g id="inputs" aria-label="Task suite and evaluation settings">
+      <path d="M76 188H316L336 208V293H76Z" class="node"/>
+      <path d="M316 188V208H336" fill="none" stroke="#a4b5c3" stroke-width="1.5"/>
+      <text x="206" y="229" text-anchor="middle" class="label">Task suite</text>
+      <text x="206" y="266" text-anchor="middle" class="small">MiniWoB · WebShop</text>
+      <rect x="76" y="347" width="260" height="114" rx="5" class="node"/>
+      <text x="206" y="385" text-anchor="middle" class="label">Experiment settings</text>
+      <text x="206" y="419" text-anchor="middle" class="small">model · tasks · seeds</text>
+      <text x="206" y="448" text-anchor="middle" class="small">trial &amp; interaction limits</text>
+    </g>
+    <g id="trial-loop" aria-label="Complete attempts with memory updates after failures">
+      <rect x="428" y="177" width="558" height="308" rx="7" fill="none" stroke="#b7cbd9" stroke-width="1.5"/>
+      <text x="450" y="209" class="small">Trial t</text>
+      <rect x="450" y="230" width="172" height="83" rx="5" class="node"/>
+      <text x="536" y="280" text-anchor="middle" class="label">Actor</text>
+      <rect x="790" y="230" width="172" height="83" rx="5" class="node"/>
+      <text x="876" y="280" text-anchor="middle" class="label">Environment</text>
+      <path d="M622 248H790" class="edge"/>
+      <text x="706" y="238" text-anchor="middle" class="small">actions</text>
+      <path d="M790 294H622" class="edge"/>
+      <text x="706" y="284" text-anchor="middle" class="small">observations</text>
+      <rect x="547" y="384" width="319" height="79" rx="5" class="memory"/>
+      <text x="706" y="416" text-anchor="middle" class="label">Memory / scheduler</text>
+      <text x="706" y="448" text-anchor="middle" class="small">extract · update · use</text>
+      <path d="M876 313V350H706V384" class="edge"/>
+      <text x="889" y="345" class="small">failure*</text>
+      <path d="M547 424H467V313" class="edge"/>
+      <text x="476" y="367" class="small">next trial</text>
+    </g>
+    <path d="M336 241H428" class="edge"/>
+    <path d="M336 402H428" class="edge"/>
+    <g id="outcomes" aria-label="Task performance and resource measurements">
+      <path d="M1084 229V382C1084 411 1360 411 1360 382V229Z" fill="#edf5f9" stroke="#87a7bd" stroke-width="1.8"/>
+      <ellipse cx="1222" cy="229" rx="138" ry="24" fill="#f4f9fc" stroke="#87a7bd" stroke-width="1.8"/>
+      <text x="1222" y="288" text-anchor="middle" class="label">Task performance</text>
+      <text x="1222" y="326" text-anchor="middle" class="small">success within T trials</text>
+      <text x="1222" y="360" text-anchor="middle" class="small">recovery · trials-to-success</text>
+    </g>
+    <path d="M986 285H1084" class="edge"/>
+    <text x="1034" y="270" text-anchor="middle" class="small">measure</text>
+    <text x="1222" y="438" text-anchor="middle" class="small">Resource use</text>
+    <text x="1222" y="470" text-anchor="middle" class="small">actions · model calls</text>
+    <text x="72" y="507" class="small">* Failure with remaining trials. Stop on success or trial-budget exhaustion.</text>
+  </g>
+</svg>

@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+message: "If you use VRL-Bench, please cite the accompanying paper."
+type: software
+title: "VRL-Bench: A Unified Simulator for Agent Memory Systems"
+version: 1.0.0
+license: MIT
+repository-code: "https://github.com/vrl-bench/vrlbench"
+authors: &paper-authors
+  - given-names: Yu
+    family-names: Bai
+  - given-names: Yukai
+    family-names: Miao
+  - given-names: Dawei
+    family-names: Wang
+  - given-names: Li
+    family-names: Chen
+  - given-names: Yanyu
+    family-names: Ren
+  - given-names: Yuqian
+    family-names: Shi
+  - given-names: Dan
+    family-names: Li
+  - given-names: Ying
+    family-names: Xiong
+  - given-names: Chengqiu
+    family-names: Tan
+  - given-names: Run
+    family-names: Zhou
+  - given-names: Li
+    family-names: Li
+preferred-citation:
+  type: article
+  title: "VRL-Bench: Benchmarking agents on computer control tasks under finite trial budgets"
+  authors: *paper-authors
+  year: 2026
+  journal: arXiv
+  doi: 10.48550/arXiv.2609.12404
+  url: "https://arxiv.org/abs/2609.12404"

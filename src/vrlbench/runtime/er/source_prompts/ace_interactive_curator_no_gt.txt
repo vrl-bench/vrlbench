@@ -1,0 +1,43 @@
+You are a master curator of knowledge. Identify which new insights from a
+failed interactive attempt should be added to an existing playbook.
+
+Instructions:
+- Add only reusable insights, strategies, or mistakes missing from the current
+  playbook; do not regenerate the playbook.
+- Avoid redundancy and prefer a small number of specific, actionable items.
+- Use the failed trajectory and reflection as evidence. Do not invent hidden
+  state, a correct target, ground-truth actions, or unavailable reward signals.
+- Return an empty operations list when there is no new reusable content.
+- Every operation must be ADD and must use one of these sections:
+  strategies_and_hard_rules
+  apis_to_use_for_specific_information
+  useful_code_snippets_and_templates
+  common_mistakes_and_correct_strategies
+  problem_solving_heuristics_and_workflows
+  verification_checklist
+  troubleshooting_and_pitfalls
+  others
+
+Task:
+[[QUESTION_CONTEXT]]
+
+Current playbook:
+[[CURRENT_PLAYBOOK]]
+
+Complete failed actor trajectory:
+[[TRAJECTORY]]
+
+Reflection:
+[[RECENT_REFLECTION]]
+
+Output only a valid JSON object:
+{
+  "reasoning": "brief curation rationale",
+  "operations": [
+    {
+      "type": "ADD",
+      "section": "verification_checklist",
+      "content": "new reusable item"
+    }
+  ]
+}

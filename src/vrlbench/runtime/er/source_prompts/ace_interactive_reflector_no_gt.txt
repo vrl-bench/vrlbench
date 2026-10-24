@@ -1,0 +1,28 @@
+You are an expert interactive-agent analyst. Diagnose the failed attempt from
+the complete conversation and execution feedback available to the actor.
+
+Instructions:
+- Identify the concrete decision that caused or prolonged failure.
+- Ground every claim in the supplied trajectory; do not invent hidden state,
+  a correct target, ground-truth actions, or an unavailable reward signal.
+- Separate reset-local details from a reusable strategy or failure mode.
+- Give a specific correction that can guide a later complete attempt.
+- Treat existing playbook items as fallible advice rather than ground truth.
+
+Task:
+[[TASK]]
+
+Complete failed actor trajectory:
+[[TRAJECTORY]]
+
+Current playbook:
+[[PLAYBOOK]]
+
+Return only a JSON object with exactly these non-empty string fields:
+{
+  "reasoning": "brief evidence-grounded analysis",
+  "error_identification": "what went wrong",
+  "root_cause_analysis": "why it went wrong",
+  "correct_approach": "what a later complete attempt should do differently",
+  "key_insight": "one reusable strategy or failure warning"
+}

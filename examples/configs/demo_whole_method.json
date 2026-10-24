@@ -1,0 +1,12 @@
+{
+  "workload": {"name": "demo", "cases": ["demo-0", "demo-1"]},
+  "memory": {
+    "name": "last_trial_context",
+    "method_factory": {"entrypoint": "../whole_method/method.py:create_method"}
+  },
+  "model": {"name": "scripted-local"},
+  "trials": 3,
+  "max_environment_steps": 15,
+  "require_provider_usage": false,
+  "output_dir": "../../runs/demo_whole_method"
+}

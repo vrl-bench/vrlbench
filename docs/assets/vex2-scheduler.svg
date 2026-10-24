@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="5.5in" height="2.8in" viewBox="0 0 1100 560" role="img" aria-labelledby="title desc">
+<title id="title">VEX² schedules exploration and exploitation from failure history</title>
+<desc id="desc">Ordered, multi-step action-observation failure traces and the remaining complete-trial budget condition one Scheduler LM call. Its single response contains a multilevel semantic policy tree and the joint allocation NEXT 2, RESERVE 1, PARK 0. The complete response goes to the same fixed-parameter Actor. A fresh trial consumes one opportunity; success stops and an eligible failure appends its executed trace to the history.</desc>
+<defs>
+<style><![CDATA[
+text { font-family: Arial, Helvetica, sans-serif; fill: #243444; }
+.heading { font-size: 24px; font-weight: 600; }
+.number { fill: #738291; font-size: 24px; font-weight: 400; }
+.label { font-size: 24px; }
+.strong { font-size: 25px; font-weight: 600; }
+.small { font-size: 22.5px; fill: #5f6c7a; }
+.role { font-size: 22.5px; font-weight: 600; }
+.math { font-family: "STIX Two Math", "Times New Roman", serif; }
+.flow { fill: none; stroke: #697b8c; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.trace-flow { fill: none; stroke: #61849f; stroke-width: 1.6; stroke-linecap: round; }
+.tree-flow { fill: none; stroke: #9687b9; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.failure-flow { fill: none; stroke: #bb755d; stroke-width: 1.8; stroke-dasharray: 6 5; stroke-linecap: round; stroke-linejoin: round; }
+.action { fill: white; stroke: #7198b5; stroke-width: 1.5; }
+.observation { fill: #e3eff7; stroke: #7198b5; stroke-width: 1.5; }
+.decision { fill: #f0ecf7; stroke: #b5a7cf; stroke-width: 1.5; }
+]]></style>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#697b8c"/></marker>
+<marker id="arrow-trace" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#61849f"/></marker>
+<marker id="arrow-tree" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#9687b9"/></marker>
+<marker id="arrow-failure" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#bb755d"/></marker>
+<marker id="arrow-success" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#4a9279"/></marker>
+</defs>
+<rect width="1100" height="560" fill="white"/>
+<!-- 三个视图说明同一次语义更新，不表示可拆分的方法组件。 -->
+<g id="stage-labels" aria-label="Three views of one integrated scheduling decision">
+<text x="18" y="30" class="heading"><tspan class="number">1 </tspan> Raw A–O traces</text>
+<text x="321" y="30" class="heading"><tspan class="number">2 </tspan> Budget</text>
+<text x="344" y="58" class="heading">conditioning</text>
+<text x="580" y="30" class="heading"><tspan class="number">3 </tspan> Grounded tree + allocation</text>
+<path d="M302 52 V386 M558 52 V386" fill="none" stroke="#e1e6eb" stroke-width="1.2"/>
+</g>
+<!-- 动作空心、观察实心；虚线连接表示省略的中间步骤。 -->
+<g id="raw-failure-history" aria-label="Ordered multi-step raw action-observation failure histories">
+<rect id="history-boundary" x="18" y="58" width="272" height="336" rx="10" fill="#fbfdff" stroke="#a5bfd1" stroke-width="1.7"/>
+<g id="failure-1" aria-label="Failure 1: reset, multiple action-observation pairs, terminal failure">
+<text x="80" y="84" text-anchor="middle" class="small">failure 1</text>
+<ellipse cx="80" cy="111" rx="48" ry="17" fill="#e3eff7"/>
+<text x="80" y="119" text-anchor="middle" class="label">reset</text>
+<path d="M80 128 V134" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<path d="M80 169 V178" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<path d="M80 269 V278" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<path d="M80 313 V322" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<rect x="46" y="137" width="68" height="32" rx="3" class="action"/><text x="80" y="161" text-anchor="middle" class="label">A<tspan dy="4" font-size="17">1</tspan></text>
+<rect x="46" y="181" width="68" height="32" rx="3" class="observation"/><text x="80" y="205" text-anchor="middle" class="label">O<tspan dy="4" font-size="17">1</tspan></text>
+<rect x="46" y="237" width="68" height="32" rx="3" class="action"/><text x="80" y="261" text-anchor="middle" class="label">A<tspan dy="4" font-size="17">k</tspan></text>
+<rect x="46" y="281" width="68" height="32" rx="3" class="observation"/><text x="80" y="305" text-anchor="middle" class="label">O<tspan dy="4" font-size="17">k</tspan></text>
+<path d="M80 215 V234" class="trace-flow" stroke-dasharray="2 6" marker-end="url(#arrow-trace)"/>
+<rect x="36" y="325" width="88" height="30" rx="5" fill="#fbf1ed" stroke="#d5a493" stroke-width="1.4"/>
+<text x="80" y="348" text-anchor="middle" class="role" style="fill:#a75f46">FAIL</text>
+</g>
+<g id="failure-2" aria-label="Failure 2: reset, multiple action-observation pairs, terminal failure">
+<text x="218" y="84" text-anchor="middle" class="small">failure 2</text>
+<ellipse cx="218" cy="111" rx="48" ry="17" fill="#e3eff7"/>
+<text x="218" y="119" text-anchor="middle" class="label">reset</text>
+<path d="M218 128 V134" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<path d="M218 169 V178" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<path d="M218 269 V278" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<path d="M218 313 V322" class="trace-flow" marker-end="url(#arrow-trace)"/>
+<rect x="184" y="137" width="68" height="32" rx="3" class="action"/><text x="218" y="161" text-anchor="middle" class="label">A<tspan dy="4" font-size="17">1</tspan></text>
+<rect x="184" y="181" width="68" height="32" rx="3" class="observation"/><text x="218" y="205" text-anchor="middle" class="label">O<tspan dy="4" font-size="17">1</tspan></text>
+<rect x="184" y="237" width="68" height="32" rx="3" class="action"/><text x="218" y="261" text-anchor="middle" class="label">A<tspan dy="4" font-size="17">k</tspan></text>
+<rect x="184" y="281" width="68" height="32" rx="3" class="observation"/><text x="218" y="305" text-anchor="middle" class="label">O<tspan dy="4" font-size="17">k</tspan></text>
+<path d="M218 215 V234" class="trace-flow" stroke-dasharray="2 6" marker-end="url(#arrow-trace)"/>
+<rect x="174" y="325" width="88" height="30" rx="5" fill="#fbf1ed" stroke="#d5a493" stroke-width="1.4"/>
+<text x="218" y="348" text-anchor="middle" class="role" style="fill:#a75f46">FAIL</text>
+</g>
+<text x="151" y="380" text-anchor="middle" class="small">failed-trial history <tspan class="math">ℱ</tspan><tspan dy="4" font-size="17">t</tspan></text>
+</g>
+<!-- 预算输入与一次计算采用中性色，与语义树节点区分。 -->
+<g id="budget-conditioning" aria-label="Remaining budget and raw history condition one scheduler call">
+<rect x="328" y="109" width="204" height="76" rx="7" fill="#f5f7f9" stroke="#b6c2cd" stroke-width="1.5"/>
+<text x="430" y="138" text-anchor="middle" class="small">remaining trials</text>
+<text x="430" y="168" text-anchor="middle" class="strong math">R<tspan dy="4" font-size="18">t</tspan><tspan dy="-4"> = 3</tspan></text>
+<path d="M430 185 V224" class="flow" marker-end="url(#arrow)"/>
+<path d="M290 269 H325" class="flow" marker-end="url(#arrow)"/>
+<rect x="328" y="228" width="204" height="84" rx="9" fill="#f1f5f8" stroke="#7c91a3" stroke-width="1.7"/>
+<text x="430" y="263" text-anchor="middle" class="strong">Scheduler LM</text>
+<text x="430" y="293" text-anchor="middle" class="small">one call</text>
+<path d="M532 269 H572" class="flow" marker-end="url(#arrow)"/>
+</g>
+<!-- 同一边界内保留根、内部语义决策和全部策略分配。 -->
+<g id="joint-response" aria-label="One complete response contains a grounded multilevel semantic policy tree and allocation">
+<rect x="575" y="58" width="513" height="336" rx="10" fill="#fcfbfe" stroke="#b3a4cb" stroke-width="1.7"/>
+<ellipse cx="833" cy="112" rx="111" ry="34" fill="#e5ddf2" stroke="#b3a4cb" stroke-width="1.5"/>
+<text x="833" y="106" text-anchor="middle" class="strong">task-level</text>
+<text x="833" y="132" text-anchor="middle" class="strong">policy choice</text>
+<path d="M788 143 L681 171" class="tree-flow" marker-end="url(#arrow-tree)"/>
+<path d="M878 143 L921 171" class="tree-flow" marker-end="url(#arrow-tree)"/>
+<ellipse cx="663" cy="196" rx="80" ry="23" class="decision"/>
+<ellipse cx="935" cy="196" rx="80" ry="23" class="decision"/>
+<text x="663" y="204" text-anchor="middle" class="small" style="fill:#75628f">decision D<tspan dy="4" font-size="17">1</tspan></text>
+<text x="935" y="204" text-anchor="middle" class="small" style="fill:#75628f">decision D<tspan dy="4" font-size="17">2</tspan></text>
+<path d="M663 219 V244" class="tree-flow" marker-end="url(#arrow-tree)"/>
+<path d="M912 218 L838 244" class="tree-flow" marker-end="url(#arrow-tree)"/>
+<path d="M958 218 L998 244" class="tree-flow" marker-end="url(#arrow-tree)"/>
+<g id="policy-a" aria-label="Policy A: supported by F1, NEXT with allocation 2">
+<rect x="586" y="248" width="154" height="122" rx="6" fill="#f4faf7" stroke="#85b6a4" stroke-width="1.5"/>
+<path d="M586 338 H740 V364 Q740 370 734 370 H592 Q586 370 586 364Z" fill="#dcefe6"/>
+<text x="663" y="276" text-anchor="middle" class="strong">policy A</text>
+<text x="663" y="303" text-anchor="middle" class="small">supported</text>
+<text x="663" y="328" text-anchor="middle" class="small">by F1</text>
+<text x="596" y="361" class="role" style="fill:#28755b">NEXT</text>
+<text x="730" y="361" text-anchor="end" class="role" style="fill:#28755b">2</text>
+</g>
+<g id="policy-b" aria-label="Policy B: alternative under F1–F2, RESERVE with allocation 1">
+<rect x="756" y="248" width="154" height="122" rx="6" fill="#fffaf0" stroke="#cfb773" stroke-width="1.5"/>
+<path d="M756 338 H910 V364 Q910 370 904 370 H762 Q756 370 756 364Z" fill="#f6eac7"/>
+<text x="833" y="276" text-anchor="middle" class="strong">policy B</text>
+<text x="833" y="303" text-anchor="middle" class="small">alternative</text>
+<text x="833" y="328" text-anchor="middle" class="small">under F1–F2</text>
+<text x="766" y="361" class="role" style="fill:#8e691b">RESERVE</text>
+<text x="900" y="361" text-anchor="end" class="role" style="fill:#8e691b">1</text>
+</g>
+<g id="policy-c" aria-label="Policy C: contradicted by F1, PARK with allocation 0">
+<rect x="926" y="248" width="154" height="122" rx="6" fill="#f6f7f8" stroke="#bbc3ca" stroke-width="1.5"/>
+<path d="M926 338 H1080 V364 Q1080 370 1074 370 H932 Q926 370 926 364Z" fill="#e7ebef"/>
+<text x="1003" y="276" text-anchor="middle" class="strong">policy C</text>
+<text x="1003" y="303" text-anchor="middle" class="small">contradicted</text>
+<text x="1003" y="328" text-anchor="middle" class="small">by F1</text>
+<text x="936" y="361" class="role" style="fill:#63717e">PARK</text>
+<text x="1070" y="361" text-anchor="end" class="role" style="fill:#63717e">0</text>
+</g>
+</g>
+<!-- 下排节点中心等距；完整响应进入 Actor，执行后向左回传。 -->
+<g id="execution-loop" aria-label="Complete response to Actor, fresh trial, eligible failure return or success stop">
+<path d="M930 394 V435" class="flow" marker-end="url(#arrow)"/>
+<rect x="780" y="438" width="300" height="62" rx="7" fill="#f1f5f8" stroke="#8c9ead" stroke-width="1.5"/>
+<text x="930" y="464" text-anchor="middle" class="label">same fixed-parameter</text>
+<text x="930" y="490" text-anchor="middle" class="strong">Actor</text>
+<path d="M780 469 H703" class="flow" marker-end="url(#arrow)"/>
+<rect x="400" y="438" width="300" height="62" rx="7" fill="white" stroke="#aebbc6" stroke-width="1.5"/>
+<text x="550" y="464" text-anchor="middle" class="label">fresh trial</text>
+<text x="550" y="490" text-anchor="middle" class="small math">R<tspan dy="4" font-size="16">t+1</tspan><tspan dy="-4"> = R</tspan><tspan dy="4" font-size="16">t</tspan><tspan dy="-4"> − 1</tspan></text>
+<path d="M400 469 H323" class="failure-flow" marker-end="url(#arrow-failure)"/>
+<rect x="20" y="438" width="300" height="62" rx="7" fill="#fcf5f1" stroke="#d0a38f" stroke-width="1.5"/>
+<text x="170" y="477" text-anchor="middle" class="label" style="fill:#9a5b42">failure: append trace</text>
+<path d="M170 438 V397" class="failure-flow" marker-end="url(#arrow-failure)"/>
+<path d="M550 500 V515" fill="none" stroke="#4a9279" stroke-width="1.7" marker-end="url(#arrow-success)"/>
+<rect x="454" y="518" width="192" height="32" rx="16" fill="#edf7f2" stroke="#90bdaa" stroke-width="1.4"/>
+<text x="550" y="542" text-anchor="middle" class="role" style="fill:#28755b">success · stop</text>
+</g>
+</svg>
