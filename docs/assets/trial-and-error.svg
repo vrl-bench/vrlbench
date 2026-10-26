@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="5.5in" height="3.5961538461538463in" viewBox="0 0 1430 935" role="img" aria-labelledby="title desc">
+  <title id="title">VRL-Bench simulator and agent views of a selected retry-win WebShop case</title>
+  <desc id="desc">Simulator View presents the shared first failure, a Reflexion-conditioned second-trial failure, and a successful memory-free second-trial retry as three repeated WebShop session rows. Agent View shows whether accumulated verbal history or an empty cross-trial context crosses reset into the Robot.</desc>
+  <metadata>Evidence SHA-256 72689d7750091823f0df3680bffadff2d345789945fa3dd25e2157cdc9f383c1; selected case sample_0009; interface-faithful vector restaging; not a runtime screenshot.</metadata>
+  <defs><style><![CDATA[
+      text{font-family:Arial,"Helvetica Neue",sans-serif;fill:#172635}.app-title{font-size:34px;font-weight:850;letter-spacing:-.4px}.app-sub{font-size:24px;fill:#5c6f7f}
+      .tab{font-size:30px;font-weight:850}.tab-sub{font-size:28px;font-weight:700;fill:#607483}.webshop{font-size:28px;font-weight:850}.query{font-size:24px;fill:#596c7c}.button{font-size:25px;font-weight:850}
+      .webshop-row{font-size:28px;font-weight:850}.query-row{font-size:28px;fill:#596c7c}.button-row{font-size:28px;font-weight:850}.session-label{font-size:28px;font-weight:850}.session-status-sub{font-size:28px;font-weight:750;fill:#a8420e}.session-status-sub.success{fill:#087358}.step-text{font-size:28px;font-weight:850}.step-text.orange{fill:#a8420e}.step-text.blue{fill:#075f92}.step-text.green{fill:#087358}
+      .goal{font-size:25px;font-weight:800}.eyebrow{font-size:23.5px;font-weight:850;letter-spacing:.2px;fill:#647787}.product-title{font-size:28px;font-weight:850}.asin{font-size:25px;font-family:Menlo,Consolas,monospace;font-weight:850}.product-sub{font-size:23px;fill:#5f7180}
+      .control{font-size:24px;font-weight:850}.terminal{font-size:30px;font-weight:850;fill:#a8420e}.path-label{font-size:24px;font-weight:850}.path-label.orange{fill:#a8420e}.path-label.blue{fill:#075f92}.path-label.green{fill:#087358}
+      .state-header{font-size:23px;font-weight:800;fill:#5c6f7e}.state-asin{font-size:28px;font-weight:850;font-family:Menlo,Consolas,monospace}.state-sub{font-size:22.5px;fill:#657684}.state-button{font-size:28px;font-weight:850}
+      .endpoint{font-size:29px;font-weight:850}.endpoint.fail{fill:#a8420e}.endpoint.success{fill:#087358}
+      .rail-title{font-size:28px;font-weight:850}.rail-body{font-size:23px;font-weight:750}.memory{font-size:23px;font-weight:750;fill:#075f92}.actor-title{font-size:27.5px;font-weight:850}
+      .thought-body{font-size:27.5px;font-weight:800}.thought-body.blue{fill:#075f92}
+      .lane-title{font-size:28px;font-weight:850}.lane-sub{font-size:22.5px;font-weight:700;fill:#607281}.action-text{font-size:24px;font-weight:850}.action-number{font-size:23.5px;font-weight:850;fill:#fff}
+      .pill rect{fill:#f2f5f7;stroke:#b9c8d2;stroke-width:1.4}.pill-text{font-size:28px;font-weight:850}.pill.blue rect{fill:#e8f5fc;stroke:#1684bd}.pill.blue text{fill:#075f92}.pill.green rect{fill:#e7f7f1;stroke:#14906f}.pill.green text{fill:#087358}.pill.orange rect{fill:#fff0dc;stroke:#cb6416}.pill.orange text{fill:#a8420e}
+      .badge circle{fill:#fff;stroke-width:3}.badge.orange circle{stroke:#ca5a0b}.badge.orange text{fill:#a8420e}.badge.blue circle{stroke:#1684bd}.badge.blue text{fill:#075f92}.badge.green circle{stroke:#14906f}.badge.green text{fill:#087358}.badge-text{font-size:25px;font-weight:850}
+      .orange-flow{fill:none;stroke:#ca5a0b;stroke-width:3;stroke-dasharray:10 8}.blue-flow{fill:none;stroke:#1684bd;stroke-width:2.35}.green-flow{fill:none;stroke:#14906f;stroke-width:2.35}.gray-flow{fill:none;stroke:#8799a6;stroke-width:2.15}
+      .action rect{stroke-width:1.7}.action.blue rect{fill:#e9f6fc;stroke:#1684bd}.action.blue circle{fill:#1684bd}.action.green rect{fill:#e8f7f1;stroke:#14906f}.action.green circle{fill:#14906f}
+    ]]></style>
+    <marker id="arrow-orange" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" refX="10" refY="5.5" orient="auto"><path d="M0 0L11 5.5L0 11z" fill="#ca5a0b"/></marker>
+    <marker id="arrow-blue" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1684bd"/></marker>
+    <marker id="arrow-green" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#14906f"/></marker>
+    <marker id="arrow-gray" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8799a6"/></marker>
+  </defs>
+  <rect width="1430" height="935" fill="#edf3f6"/><rect x="18" y="16" width="1394" height="903" rx="22" fill="#fff"/>
+
+  <g transform="translate(0,-77)">
+  <!-- View 1: simulator -->
+  <rect x="43" y="111" width="1344" height="705" rx="17" fill="#fff" stroke="#aec2cf" stroke-width="1.8"/>
+  <rect x="43" y="111" width="1344" height="46" rx="17" fill="#eaf4fa"/>
+  <text x="64" y="141" class="tab" text-anchor="start">SIMULATOR VIEW</text>
+  <g aria-label="SHARED T1 WebShop session">
+      <rect x="61" y="168" width="1308" height="158" rx="12" fill="#fffdfb" stroke="#d8864e" stroke-width="1.6"/>
+      
+      <rect x="281" y="170" width="1070" height="40" rx="12" fill="#f3f7f9"/>
+      <text x="299" y="198" class="webshop-row" text-anchor="start">WebShop</text>
+      <rect x="440" y="177" width="737" height="29" rx="7" fill="#fff" stroke="#b9c8d2"/>
+      <text x="455" y="198" class="query-row" text-anchor="start">grey sectional sofa for living room</text>
+      <rect x="1193" y="177" width="140" height="29" rx="7" fill="#fff0d8" stroke="#c97814"/>
+      <text x="1246" y="198" class="button-row" text-anchor="middle">Search</text><g aria-label="step 1"><circle cx="1320" cy="190" r="16" fill="#fff" stroke="#ca5a0b" stroke-width="2.4"/><text x="1320" y="199" class="step-text orange" text-anchor="middle">1</text></g>
+          <g aria-label="same Robot configuration with no cross-trial memory">
+      <rect x="69" y="197" width="198" height="54" rx="12" fill="#e8f7f1" stroke="#14906f" stroke-width="2"/>
+      <rect x="82" y="206" width="47" height="36" rx="9" fill="#fff" stroke="#14906f" stroke-width="2"/>
+      <circle cx="97" cy="224" r="3.5" fill="#14906f"/><circle cx="114" cy="224" r="3.5" fill="#14906f"/>
+      <path d="M96 234h19M105 200v7" stroke="#14906f" stroke-width="2" stroke-linecap="round"/>
+      <text x="137" y="232" class="actor-title" text-anchor="start">ROBOT</text>
+    </g><g class="pill orange"><rect x="65" y="260" width="212" height="36" rx="18.0"/><text x="171.0" y="285.0" class="session-label" text-anchor="middle">SHARED T1</text></g>
+          <rect x="281" y="221" width="1070" height="103" rx="10" fill="#fff" stroke="#d4dde4"/>
+          <path d="M1306 200C1139 228 515 212 407 228" class="orange-flow" marker-end="url(#arrow-orange)"/><path d="M407 262V307C521 321 797 313 835 290" class="orange-flow" marker-end="url(#arrow-orange)"/><path d="M995 291h30" class="orange-flow" marker-end="url(#arrow-orange)"/>
+          <g aria-label="illustrative vector sectional sofa">
+      <rect x="311.08" y="256.48" width="63.28000000000001" height="34.72" rx="6.720000000000001" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <rect x="301" y="271.6" width="73.36000000000001" height="31.92" rx="6.16" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <rect x="350.28000000000003" y="277.2" width="37.52" height="26.32" rx="5.6000000000000005" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <path d="M342.664 271.6v31.92M311.64 303.52v5.040000000000001M375.48 303.52v5.040000000000001" stroke="#7c7973" stroke-width="2"/>
+    </g>
+          <text x="435" y="276" class="state-asin" text-anchor="start">B09JKW2W67</text><g aria-label="step 2"><circle cx="407" cy="245" r="16" fill="#fff" stroke="#ca5a0b" stroke-width="2.4"/><text x="407" y="254" class="step-text orange" text-anchor="middle">2</text></g>
+          <rect x="851" y="270" width="144" height="40" rx="8" fill="#ffe0ad" stroke="#c97814"/><text x="923.0" y="299.0" class="state-button" text-anchor="middle">Buy Now</text><g aria-label="step 3"><circle cx="863" cy="250" r="16" fill="#fff" stroke="#ca5a0b" stroke-width="2.4"/><text x="863" y="259" class="step-text orange" text-anchor="middle">3</text></g>
+          <rect x="1101" y="238" width="230" height="72" rx="10" fill="#fff2ea" stroke="#d05a16"/>
+          <text x="1216" y="269" class="terminal" text-anchor="middle">T1 · FAIL</text><text x="1216" y="296" class="session-status-sub" text-anchor="middle">options {} · 0.667</text>
+        
+    </g>
+  <g aria-label="REFLEXION T2 WebShop session">
+      <rect x="61" y="338" width="1308" height="286" rx="12" fill="#f9fcfe" stroke="#1684bd" stroke-width="1.6"/>
+      
+      <rect x="281" y="344" width="1070" height="40" rx="12" fill="#f3f7f9"/>
+      <text x="299" y="372" class="webshop-row" text-anchor="start">WebShop</text>
+      <rect x="440" y="351" width="737" height="29" rx="7" fill="#fff" stroke="#b9c8d2"/>
+      <text x="455" y="372" class="query-row" text-anchor="start">grey sectional sofa living room</text>
+      <rect x="1193" y="351" width="140" height="29" rx="7" fill="#fff0d8" stroke="#c97814"/>
+      <text x="1246" y="372" class="button-row" text-anchor="middle">Search</text><g aria-label="step 1"><circle cx="1320" cy="364" r="16" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="1320" y="373" class="step-text blue" text-anchor="middle">1</text></g>
+          <g aria-label="same Robot configuration with accumulated reflection history">
+      <rect x="69" y="392" width="198" height="54" rx="12" fill="#eaf6fc" stroke="#147fb7" stroke-width="2"/>
+      <rect x="82" y="401" width="47" height="36" rx="9" fill="#fff" stroke="#147fb7" stroke-width="2"/>
+      <path d="M87 408Q105 401 123 408M91 412Q105 407 119 412" stroke="#147fb7" stroke-width="1.55" fill="none" stroke-linecap="round"/><circle cx="97" cy="419" r="3.5" fill="#147fb7"/><circle cx="114" cy="419" r="3.5" fill="#147fb7"/>
+      <path d="M96 429h19M105 395v7" stroke="#147fb7" stroke-width="2" stroke-linecap="round"/>
+      <text x="137" y="427" class="actor-title" text-anchor="start">ROBOT</text>
+    </g><g class="pill blue"><rect x="65" y="457" width="212" height="36" rx="18.0"/><text x="171.0" y="482.0" class="session-label" text-anchor="middle">REFLEXION T2</text></g><g aria-label="memory thought: inspect details · verify → buy">
+      <path d="M77 502H92
+               C96 502 96 494 101 494
+               C106 494 106 502 111 502
+               H261Q273 502 273 514
+               V550Q273 562 261 562
+               H77Q65 562 65 550
+               V514Q65 502 77 502Z"
+            fill="#eef8fd" stroke="#147fb7" stroke-width="1.5" stroke-linejoin="round"/>
+      <text x="169" y="527" class="thought-body blue" text-anchor="middle">inspect details</text>
+      <text x="169" y="553" class="thought-body blue" text-anchor="middle">verify → buy</text>
+    </g>
+          <rect x="281" y="393" width="1070" height="92" rx="9" fill="#fff" stroke="#c7dce8"/>
+          <rect x="281" y="495" width="1070" height="42" rx="9" fill="#eef7fc" stroke="#9fcce2"/>
+          <rect x="281" y="550" width="1070" height="68" rx="9" fill="#fff" stroke="#c7dce8"/>
+          
+          <path d="M1308 376C1249 402 511 385 393 397" class="blue-flow" marker-end="url(#arrow-blue)"/>
+          <path d="M393 430V471C521 482 651 477 667 454" class="blue-flow" marker-end="url(#arrow-blue)"/>
+          <path d="M851 450h30" class="blue-flow" marker-end="url(#arrow-blue)"/>
+          <path d="M1035 450h27" class="blue-flow" marker-end="url(#arrow-blue)"/>
+          <path d="M1291 455C1315 488 1308 488 1308 497" class="blue-flow" marker-end="url(#arrow-blue)"/>
+          <path d="M605 595h190" class="blue-flow" marker-end="url(#arrow-blue)"/>
+          <path d="M955 595h16" class="blue-flow" marker-end="url(#arrow-blue)"/>
+        
+          <g aria-label="illustrative vector sectional sofa">
+      <rect x="305.84" y="425.04" width="42.94" height="23.560000000000002" rx="4.5600000000000005" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <rect x="299" y="435.3" width="49.78" height="21.66" rx="4.18" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <rect x="332.44" y="439.1" width="25.46" height="17.86" rx="3.8" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <path d="M327.272 435.3v21.66M306.22 456.96v3.42M349.53999999999996 456.96v3.42" stroke="#7c7973" stroke-width="2"/>
+    </g>
+          <text x="421" y="447" class="state-asin" text-anchor="start">B09JKW2W67</text><g aria-label="step 2"><circle cx="393" cy="413" r="16" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="393" y="422" class="step-text blue" text-anchor="middle">2</text></g>
+          <rect x="681" y="430" width="170" height="40" rx="8" fill="#f1f5f7" stroke="#aebdc8"/><text x="766.0" y="459.0" class="state-button" text-anchor="middle">Description</text><g aria-label="step 3"><circle cx="693" cy="413" r="16" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="693" y="422" class="step-text blue" text-anchor="middle">3</text></g>
+          <rect x="891" y="430" width="144" height="40" rx="8" fill="#ffe0ad" stroke="#c97814"/><text x="963.0" y="459.0" class="state-button" text-anchor="middle">Buy Now</text><g aria-label="steps 4 and 5: repeated Buy Now clicks"><rect x="885.0" y="396.0" width="66" height="34" rx="17.0" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="918" y="422" class="step-text blue" text-anchor="middle">4–5</text></g>
+          <rect x="1071" y="430" width="220" height="40" rx="8" fill="#f1f5f7" stroke="#aebdc8"/><text x="1181.0" y="459.0" class="state-button" text-anchor="middle">Back to search</text><g aria-label="step 6"><circle cx="1083" cy="413" r="16" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="1083" y="422" class="step-text blue" text-anchor="middle">6</text></g>
+          <text x="299" y="522" class="webshop-row" text-anchor="start">WebShop</text>
+          <rect x="440" y="499" width="737" height="30" rx="7" fill="#fff" stroke="#b9c8d2"/>
+          <text x="455" y="521" class="query-row" text-anchor="start">grey sectional sofa for living room grey</text>
+          <rect x="1193" y="499" width="140" height="30" rx="7" fill="#fff0d8" stroke="#c97814"/>
+          <text x="1246" y="522" class="button-row" text-anchor="middle">Search</text>
+          
+          <path d="M1317 530
+                   C1312 539 1266 541 1222 541
+                   C651 546 455 544 393 552"
+                class="blue-flow" marker-end="url(#arrow-blue)"/>
+        <g aria-label="step 7"><circle cx="1320" cy="514" r="16" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="1320" y="523" class="step-text blue" text-anchor="middle">7</text></g>
+          <g aria-label="illustrative vector sectional sofa">
+      <rect x="304.4" y="574.4" width="33.9" height="18.599999999999998" rx="3.5999999999999996" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <rect x="299" y="582.5" width="39.3" height="17.099999999999998" rx="3.3" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <rect x="325.4" y="585.5" width="20.099999999999998" height="14.099999999999998" rx="3.0" fill="#aaa59d" stroke="#7c7973" stroke-width="2"/>
+      <path d="M321.32 582.5v17.099999999999998M304.7 599.6v2.6999999999999997M338.9 599.6v2.6999999999999997" stroke="#7c7973" stroke-width="2"/>
+    </g>
+          <text x="421" y="595" class="state-asin" text-anchor="start">B09KXTS4DZ</text><g aria-label="step 8"><circle cx="393" cy="569" r="16" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="393" y="578" class="step-text blue" text-anchor="middle">8</text></g>
+          <rect x="811" y="576" width="144" height="38" rx="8" fill="#ffe0ad" stroke="#c97814"/><text x="883.0" y="604.0" class="state-button" text-anchor="middle">Buy Now</text><g aria-label="step 9"><circle cx="823" cy="559" r="16" fill="#fff" stroke="#1684bd" stroke-width="2.4"/><text x="823" y="568" class="step-text blue" text-anchor="middle">9</text></g>
+          <rect x="971" y="556" width="360" height="56" rx="9" fill="#fff2ea" stroke="#d05a16"/>
+          <text x="1151" y="580" class="terminal" text-anchor="middle">T2 · FAIL · 0.667</text>
+          <text x="1151" y="605" class="session-status-sub" text-anchor="middle">UNSOLVED THROUGH T6</text>
+        
+    </g>
+  <g aria-label="RETRY T2 WebShop session">
+      <rect x="61" y="636" width="1308" height="164" rx="12" fill="#fbfefc" stroke="#14906f" stroke-width="1.6"/>
+      
+      <rect x="281" y="643" width="1070" height="40" rx="12" fill="#f3f7f9"/>
+      <text x="299" y="671" class="webshop-row" text-anchor="start">WebShop</text>
+      <rect x="440" y="650" width="737" height="29" rx="7" fill="#fff" stroke="#b9c8d2"/>
+      <text x="455" y="671" class="query-row" text-anchor="start">grey sectional sofa living room</text>
+      <rect x="1193" y="650" width="140" height="29" rx="7" fill="#fff0d8" stroke="#c97814"/>
+      <text x="1246" y="671" class="button-row" text-anchor="middle">Search</text><g aria-label="step 1"><circle cx="1320" cy="663" r="16" fill="#fff" stroke="#14906f" stroke-width="2.4"/><text x="1320" y="672" class="step-text green" text-anchor="middle">1</text></g>
+          <g aria-label="same Robot configuration with no cross-trial memory">
+      <rect x="69" y="668" width="198" height="54" rx="12" fill="#e8f7f1" stroke="#14906f" stroke-width="2"/>
+      <rect x="82" y="677" width="47" height="36" rx="9" fill="#fff" stroke="#14906f" stroke-width="2"/>
+      <circle cx="97" cy="695" r="3.5" fill="#14906f"/><circle cx="114" cy="695" r="3.5" fill="#14906f"/>
+      <path d="M96 705h19M105 671v7" stroke="#14906f" stroke-width="2" stroke-linecap="round"/>
+      <text x="137" y="703" class="actor-title" text-anchor="start">ROBOT</text>
+    </g><g class="pill green"><rect x="65" y="731" width="212" height="36" rx="18.0"/><text x="171.0" y="756.0" class="session-label" text-anchor="middle">RETRY T2</text></g>
+          <rect x="281" y="693" width="1070" height="100" rx="9" fill="#fff" stroke="#c7ded5"/>
+          
+          <path d="M1308 675C1229 702 525 685 407 700" class="green-flow" marker-end="url(#arrow-green)"/>
+          <path d="M407 734V777C555 789 693 778 707 758" class="green-flow" marker-end="url(#arrow-green)"/>
+          <path d="M825 755h50" class="green-flow" marker-end="url(#arrow-green)"/>
+          <path d="M1035 755h24" class="green-flow" marker-end="url(#arrow-green)"/>
+        
+          <g aria-label="illustrative vector sectional sofa">
+      <rect x="311.08" y="727.48" width="63.28000000000001" height="34.72" rx="6.720000000000001" fill="#9faab2" stroke="#74818a" stroke-width="2"/>
+      <rect x="301" y="742.6" width="73.36000000000001" height="31.92" rx="6.16" fill="#9faab2" stroke="#74818a" stroke-width="2"/>
+      <rect x="350.28000000000003" y="748.2" width="37.52" height="26.32" rx="5.6000000000000005" fill="#9faab2" stroke="#74818a" stroke-width="2"/>
+      <path d="M342.664 742.6v31.92M311.64 774.52v5.040000000000001M375.48 774.52v5.040000000000001" stroke="#74818a" stroke-width="2"/>
+    </g>
+          <text x="435" y="749" class="state-asin" text-anchor="start">B09F2VQY3T</text><g aria-label="step 2"><circle cx="407" cy="717" r="16" fill="#fff" stroke="#14906f" stroke-width="2.4"/><text x="407" y="726" class="step-text green" text-anchor="middle">2</text></g>
+          <g class="pill green"><rect x="721" y="736" width="104" height="38" rx="19.0"/><text x="773.0" y="762.0" class="state-button" text-anchor="middle">grey</text></g><g aria-label="step 3"><circle cx="731" cy="717" r="16" fill="#fff" stroke="#14906f" stroke-width="2.4"/><text x="731" y="726" class="step-text green" text-anchor="middle">3</text></g>
+          <rect x="891" y="735" width="144" height="40" rx="8" fill="#ffe0ad" stroke="#c97814"/><text x="963.0" y="764.0" class="state-button" text-anchor="middle">Buy Now</text><g aria-label="step 4"><circle cx="903" cy="717" r="16" fill="#fff" stroke="#14906f" stroke-width="2.4"/><text x="903" y="726" class="step-text green" text-anchor="middle">4</text></g>
+          <rect x="1071" y="715" width="230" height="65" rx="10" fill="#eaf8f2" stroke="#14906f"/>
+          <text x="1186" y="743" class="endpoint success" text-anchor="middle">T2 · SUCCESS</text><text x="1186" y="769" class="session-status-sub success" text-anchor="middle">1.0 · STOP</text>
+        
+    </g>
+
+  <!-- View 2: agent -->
+  <g transform="translate(0,20)">
+  <rect x="43" y="803" width="1344" height="170" rx="17" fill="#fff" stroke="#aec2cf" stroke-width="1.8"/>
+  <rect x="43" y="803" width="1344" height="42" rx="17" fill="#f1f5f7"/>
+  <text x="64" y="833" class="tab" text-anchor="start">AGENT VIEW</text><text x="288" y="833" class="tab-sub" text-anchor="start">What crossed the reset?</text>
+
+  <g transform="translate(0,-12)">
+  <rect x="64" y="891" width="213" height="58" rx="12" fill="#fff3ec" stroke="#d06a2b"/>
+  <text x="170.5" y="928" class="lane-title" text-anchor="middle">FAILED TRIAL i</text>
+  <path d="M278 920h28" class="gray-flow"/><path d="M306 920v-28h25" class="blue-flow" marker-end="url(#arrow-blue)"/><path d="M306 920v30h25" class="green-flow" marker-end="url(#arrow-green)"/>
+
+  <rect x="342" y="871" width="400" height="42" rx="10" fill="#eaf6fc" stroke="#1684bd"/>
+  <g class="pill blue"><rect x="354" y="875" width="104" height="34" rx="17.0"/><text x="406.0" y="899.0" class="pill-text" text-anchor="middle">WRITE</text></g><text x="471" y="899" class="rail-title" text-anchor="start">Self-Reflection LM</text>
+  <rect x="342" y="929" width="400" height="42" rx="10" fill="#e8f7f1" stroke="#14906f"/>
+  <text x="542" y="956" class="rail-title" text-anchor="middle">NULL UPDATE</text>
+
+  <path d="M743 892h6" class="blue-flow" marker-end="url(#arrow-blue)"/><path d="M743 950h6" class="green-flow" marker-end="url(#arrow-green)"/>
+  <g class="pill blue"><rect x="750" y="874" width="126" height="36" rx="18.0"/><text x="813.0" y="899.0" class="pill-text" text-anchor="middle">RESET</text></g><g class="pill green"><rect x="750" y="932" width="126" height="36" rx="18.0"/><text x="813.0" y="957.0" class="pill-text" text-anchor="middle">RESET</text></g>
+  <path d="M878 892h6" class="blue-flow" marker-end="url(#arrow-blue)"/><path d="M878 950h6" class="green-flow" marker-end="url(#arrow-green)"/>
+  <g class="pill blue"><rect x="888" y="874" width="304" height="36" rx="18.0"/><text x="1040.0" y="899.0" class="pill-text" text-anchor="middle">REPLAY reflections</text></g><g class="pill green"><rect x="888" y="932" width="304" height="36" rx="18.0"/><text x="1040.0" y="957.0" class="pill-text" text-anchor="middle">EMPTY context</text></g>
+  <path d="M1194 892h8" class="blue-flow" marker-end="url(#arrow-blue)"/><path d="M1194 950h8" class="green-flow" marker-end="url(#arrow-green)"/>
+  <g aria-label="same Robot configuration with accumulated reflection history">
+      <rect x="1210" y="865" width="172" height="54" rx="12" fill="#eaf6fc" stroke="#147fb7" stroke-width="2"/>
+      <rect x="1223" y="874" width="47" height="36" rx="9" fill="#fff" stroke="#147fb7" stroke-width="2"/>
+      <path d="M1228 881Q1246 874 1264 881M1232 885Q1246 880 1260 885" stroke="#147fb7" stroke-width="1.55" fill="none" stroke-linecap="round"/><circle cx="1238" cy="892" r="3.5" fill="#147fb7"/><circle cx="1255" cy="892" r="3.5" fill="#147fb7"/>
+      <path d="M1237 902h19M1246 868v7" stroke="#147fb7" stroke-width="2" stroke-linecap="round"/>
+      <text x="1278" y="900" class="actor-title" text-anchor="start">ROBOT</text>
+    </g><g aria-label="same Robot configuration with no cross-trial memory">
+      <rect x="1210" y="923" width="172" height="54" rx="12" fill="#e8f7f1" stroke="#14906f" stroke-width="2"/>
+      <rect x="1223" y="932" width="47" height="36" rx="9" fill="#fff" stroke="#14906f" stroke-width="2"/>
+      <circle cx="1238" cy="950" r="3.5" fill="#14906f"/><circle cx="1255" cy="950" r="3.5" fill="#14906f"/>
+      <path d="M1237 960h19M1246 926v7" stroke="#14906f" stroke-width="2" stroke-linecap="round"/>
+      <text x="1278" y="958" class="actor-title" text-anchor="start">ROBOT</text>
+    </g>
+  </g>
+  </g>
+  </g>
+</svg>

@@ -1,0 +1,68 @@
+name: Check simulator and Python distributions
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install development dependencies
+        run: python -m pip install -e '.[runtime,analysis,dev]'
+      - name: Build standard Python distributions
+        run: python -m build --outdir "$RUNNER_TEMP/vrlbench-dist"
+      - name: Run offline source and distribution tests
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          export VRLBENCH_TEST_WHEEL="$(find "$RUNNER_TEMP/vrlbench-dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          export VRLBENCH_TEST_SDIST="$(find "$RUNNER_TEMP/vrlbench-dist" -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          python -m unittest discover -s tests -v
+          python examples/agent_loop/run.py
+          python examples/agent_loop/run.py --method vex2
+          vrlbench simulate --config examples/configs/demo_whole_method.json --output-dir output/ci-whole-method
+          python examples/memory_study/run.py --output-dir output/ci-memory-study
+          vrlbench simulate --config examples/configs/local_feedback.json --output-dir output/ci-feedback
+          vrlbench simulate --config examples/configs/local_retry.json --output-dir output/ci-retry
+          vrlbench compare output/ci-retry output/ci-feedback --statistics --analysis-unit case --resamples 1000
+          vrlbench inspect output/ci-feedback --case case_b --format json
+          vrlbench demo --output-dir output/ci-demo
+          vrlbench inspect output/ci-demo --case demo-0 --format json
+          git diff --check
+      - name: Install the wheel outside the checkout
+        shell: bash
+        run: |
+          wheel_path="$(find "$RUNNER_TEMP/vrlbench-dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          python -m venv "$RUNNER_TEMP/vrlbench-base"
+          "$RUNNER_TEMP/vrlbench-base/bin/python" -m pip install --no-deps "$wheel_path"
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-base/bin/vrlbench" --help
+          env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-base/bin/vrlbench" demo --plan
+          env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-base/bin/python" -c 'import sys; from vrlbench import analyze_results, posthoc_power_mcnemar; assert callable(analyze_results) and callable(posthoc_power_mcnemar); assert not any(name.split(".")[0] in {"openai", "numpy", "scipy"} for name in sys.modules)'
+          python -m venv "$RUNNER_TEMP/vrlbench-runtime"
+          "$RUNNER_TEMP/vrlbench-runtime/bin/python" -m pip install "${wheel_path}[runtime,analysis]"
+          "$RUNNER_TEMP/vrlbench-runtime/bin/python" -m pip check
+          env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-runtime/bin/python" -c 'from vrlbench import posthoc_power_mcnemar; assert abs(posthoc_power_mcnemar(6, 0.8) - (0.8**6 + 0.2**6)) < 1e-12'
+          env -u PYTHONPATH -u OPENAI_API_KEY -u OPENAI_BASE_URL "$RUNNER_TEMP/vrlbench-runtime/bin/vrlbench" demo --output-dir "$RUNNER_TEMP/wheel-demo"
+          env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-runtime/bin/vrlbench" inspect "$RUNNER_TEMP/wheel-demo" --case demo-0 --format json
+  webshop-sdk-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install SDK and analysis with WebShop constraints
+        run: |
+          python -m pip install --only-binary=numpy,scipy \
+            -c src/vrlbench/requirements/webshop-py310.lock.txt \
+            -e '.[runtime,analysis,dev]'
+          python -m pip check
+      - name: Verify constrained dependencies and paired statistics
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          python -m unittest discover -s tests -p 'test_dependency_constraints.py' -v
+          python -m unittest discover -s tests -p 'test_statistics.py' -v

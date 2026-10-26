@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="800" viewBox="0 0 1440 800" role="img" aria-labelledby="title description">
+  <title id="title">VRL-Bench memory-system simulation architecture</title>
+  <desc id="description">Replaceable memory systems, actors and models, and interactive workloads connect through a unified trial runtime. The runtime manages case and trial lifecycles, memory context and feedback, budgets, and resource accounting. Saved run records contain trial contexts, action traces, outcomes, and task and resource measurements for inspection and descriptive comparison of matched runs.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, "Helvetica Neue", Arial, sans-serif; fill: #253747; }
+      .heading { font-size: 27px; font-weight: 600; }
+      .label { font-size: 23px; font-weight: 600; }
+      .detail { font-size: 21px; fill: #55697a; }
+      .section { font-size: 18px; font-weight: 600; letter-spacing: 1.2px; fill: #55697a; }
+      .component { fill: #ffffff; stroke: #92a8b9; stroke-width: 1.7; }
+      .alternative { fill: #f4f8fb; stroke: #bdccd7; stroke-width: 1.3; }
+      .runtime { fill: #eaf3f8; stroke: #6b98b7; stroke-width: 1.8; }
+      .record { fill: #f9fcfe; stroke: #92a8b9; stroke-width: 1.7; }
+      .rule { fill: none; stroke: #c7d6e0; stroke-width: 1.3; }
+      .edge { fill: none; stroke: #627d91; stroke-width: 2; stroke-linejoin: round; marker-end: url(#arrow); }
+      .binding { stroke-dasharray: 6 5; }
+      .command { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 25px; font-weight: 600; }
+    </style>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#627d91"/></marker>
+  </defs>
+
+  <rect width="1440" height="800" fill="#ffffff"/>
+
+  <g id="replaceable-components" aria-label="Replaceable memory, actor and model, and workload components">
+    <text x="60" y="32" class="section">REPLACEABLE COMPONENTS</text>
+
+    <g id="memory-system" aria-label="Memory system implementations">
+      <rect x="76" y="48" width="354" height="110" class="alternative"/>
+      <rect x="68" y="56" width="354" height="110" class="alternative"/>
+      <rect x="60" y="64" width="354" height="110" class="component"/>
+      <text x="237" y="109" text-anchor="middle" class="heading">Memory system</text>
+      <text x="237" y="146" text-anchor="middle" class="detail">Retry · reference methods · custom</text>
+    </g>
+
+    <g id="actor-model" aria-label="Actor and model implementations">
+      <rect x="559" y="48" width="354" height="110" class="alternative"/>
+      <rect x="551" y="56" width="354" height="110" class="alternative"/>
+      <rect x="543" y="64" width="354" height="110" class="component"/>
+      <text x="720" y="109" text-anchor="middle" class="heading">Actor / model</text>
+      <text x="720" y="146" text-anchor="middle" class="detail">Workload actor · model transport</text>
+    </g>
+
+    <g id="workload-environment" aria-label="Interactive workload and environment implementations">
+      <rect x="1042" y="48" width="338" height="110" class="alternative"/>
+      <rect x="1034" y="56" width="338" height="110" class="alternative"/>
+      <rect x="1026" y="64" width="338" height="110" class="component"/>
+      <text x="1195" y="109" text-anchor="middle" class="heading">Workload / environment</text>
+      <text x="1195" y="146" text-anchor="middle" class="detail">MiniWoB · WebShop · custom</text>
+    </g>
+
+    <path d="M237 174V254" class="edge binding"/>
+    <path d="M720 174V254" class="edge binding"/>
+    <path d="M1195 174V254" class="edge binding"/>
+    <text x="255" y="220" class="detail">bind</text>
+    <text x="738" y="220" class="detail">bind</text>
+    <text x="1213" y="220" class="detail">bind</text>
+  </g>
+
+  <g id="unified-trial-runtime" aria-label="VRL-Bench unified trial runtime and its shared responsibilities">
+    <rect x="60" y="254" width="1320" height="128" class="runtime"/>
+    <text x="720" y="297" text-anchor="middle" class="heading">VRL-Bench trial runtime</text>
+    <path d="M60 316H1380" class="rule"/>
+    <path d="M390 316V382M720 316V382M1050 316V382" class="rule"/>
+    <text x="225" y="357" text-anchor="middle" class="label">Case &amp; trial lifecycle</text>
+    <text x="555" y="357" text-anchor="middle" class="label">Context &amp; feedback</text>
+    <text x="885" y="357" text-anchor="middle" class="label">Budget controls</text>
+    <text x="1215" y="357" text-anchor="middle" class="label">Usage accounting</text>
+  </g>
+
+  <path d="M720 382V456" class="edge"/>
+  <text x="740" y="427" class="detail">record</text>
+
+  <g id="run-records" aria-label="Saved trial behavior and task and resource measurements">
+    <path d="M120 456H1288L1320 488V620H120Z" class="record"/>
+    <path d="M1288 456V488H1320" fill="none" stroke="#92a8b9" stroke-width="1.7"/>
+    <text x="720" y="494" text-anchor="middle" class="heading">Run records</text>
+    <path d="M120 511H1320M720 511V620" class="rule"/>
+    <text x="420" y="548" text-anchor="middle" class="label">Trial behavior</text>
+    <text x="420" y="587" text-anchor="middle" class="detail">contexts · action traces · outcomes</text>
+    <text x="1020" y="548" text-anchor="middle" class="label">Task &amp; resource measures</text>
+    <text x="1020" y="579" text-anchor="middle" class="detail">success · recovery · complete trials</text>
+    <text x="1020" y="606" text-anchor="middle" class="detail">environment steps · model calls</text>
+  </g>
+
+  <g id="inspection-comparison" aria-label="Inspect recorded trials and compare matched memory-system runs">
+    <path d="M420 620V684" class="edge"/>
+    <path d="M1020 620V684" class="edge"/>
+    <rect x="200" y="684" width="440" height="82" class="component"/>
+    <rect x="800" y="684" width="440" height="82" class="component"/>
+    <text x="420" y="717" text-anchor="middle" class="command">inspect</text>
+    <text x="420" y="748" text-anchor="middle" class="detail">Recorded inputs &amp; behavior</text>
+    <text x="1020" y="717" text-anchor="middle" class="command">compare</text>
+    <text x="1020" y="748" text-anchor="middle" class="detail">Matched runs · paired differences</text>
+  </g>
+</svg>

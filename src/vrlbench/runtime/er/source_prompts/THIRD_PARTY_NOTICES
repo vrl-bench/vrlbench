@@ -1,0 +1,27 @@
+ACE prompt templates
+
+The files ace_interactive_reflector_no_gt.txt and
+ace_interactive_curator_no_gt.txt are adapted from ACE-AppWorld at commit
+9f3e92155345a9159f3a8b25abc334eeca05b545. They use normalized replacement
+fields and the failure-only, no-ground-truth evaluation contract implemented
+in this SDK. ACE-AppWorld is licensed under the Apache License 2.0. See
+ACE_LICENSE.
+
+Reflexion prompt templates
+
+The files reflexion_miniwob_writer.txt, reflexion_webshop_writer.txt, and
+reflexion_webshop_few_shot.txt preserve or adapt prompt material from
+Reflexion at commit 218cf0ef1df84b05ce379dd4a8e47f17766733a0. Reflexion is
+licensed under the MIT License. See REFLEXION_LICENSE.
+
+Dynamic Cheatsheet prompt template
+
+The file dynamic_cheatsheet_cumulative.txt adapts prompt material from Dynamic
+Cheatsheet at commit 5cfe3c37e8e52b1d858d0f3df46e7f17c50991b9. Dynamic
+Cheatsheet is licensed under the MIT License. See DYNAMIC_CHEATSHEET_LICENSE.
+
+License scope
+
+The top-level MIT LICENSE covers the first-party code in this SDK.
+Third-party components and adapted prompt material remain governed by the
+licenses and notices identified above.

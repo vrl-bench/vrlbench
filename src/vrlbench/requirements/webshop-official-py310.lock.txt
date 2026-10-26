@@ -1,0 +1,23 @@
+# WebShop official-text runtime used by the included benchmark.
+#
+# This is an application lock, not the upstream training/development
+# requirements file. It pins the packages imported by the official text
+# environment, full-catalog conversion, and Lucene retrieval path under
+# Python 3.10. Keep setup and preflight pointed at this file.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+beautifulsoup4==4.11.1
+cleantext==1.1.4
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85
+Flask==2.1.2
+gym==0.26.2
+numpy==1.22.4
+pyserini==0.17.0
+rank-bm25==0.2.2
+rich==12.4.4
+spacy==3.8.14
+thefuzz==0.22.1
+torch==2.2.2+cpu
+tqdm==4.67.3
+transformers==4.31.0
+Werkzeug==2.1.2

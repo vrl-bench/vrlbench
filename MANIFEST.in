@@ -1,0 +1,23 @@
+include pyproject.toml MANIFEST.in README.md README.zh-CN.md LICENSE THIRD_PARTY_NOTICES
+include CITATION.bib CITATION.cff CONTRIBUTING.md
+include .gitattributes .gitignore
+recursive-include .github *.yml *.yaml
+recursive-include src *.py
+include src/vrlbench/_replay.html
+recursive-include src/vrlbench/requirements *.txt
+recursive-include src/vrlbench/runtime/er/source_prompts *
+include src/vrlbench/environments/synapse_overlay/LICENSE
+recursive-include docs *.md *.svg *.png
+recursive-include examples *.py *.md *.txt *.json
+recursive-include scripts *.py *.sh
+recursive-include tests *.py
+exclude SOURCE_MANIFEST.json MANIFEST.json
+global-exclude *.py[cod] .DS_Store
+prune experiments
+prune reproduce
+prune archive
+prune private
+prune .git
+prune output
+prune build
+prune dist

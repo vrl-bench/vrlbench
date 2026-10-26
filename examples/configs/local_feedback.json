@@ -1,0 +1,26 @@
+{
+  "workload": {
+    "name": "teaching_route_control",
+    "cases": [
+      {"case_id": "case_a", "target": "blue"},
+      {"case_id": "case_b", "target": "green"},
+      {"case_id": "case_c", "target": "amber"}
+    ],
+    "factory": {"entrypoint": "../memory_study/fixture.py:create_backend"}
+  },
+  "model": {
+    "name": "deterministic-teaching-actor",
+    "transport": {"entrypoint": "../memory_study/fixture.py:create_no_model_client"}
+  },
+  "memory": {
+    "name": "feedback_memory",
+    "factory": {
+      "entrypoint": "../memory_study/fixture.py:create_memory",
+      "kwargs": {"keep_last": 2, "events_file": "memory_events.jsonl"}
+    }
+  },
+  "trials": 3,
+  "max_environment_steps": 1,
+  "require_provider_usage": false,
+  "output_dir": "../../runs/local_feedback"
+}

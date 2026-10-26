@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1280" viewBox="0 0 1600 1280" role="img" aria-labelledby="title description">
+  <title id="title">VRL-Bench: controlled simulation and comparison of agent memory systems</title>
+  <desc id="description">Real tasks, tools and an agent connect to VRL-Bench simulation. A reusable memory library, model interfaces and task adapters compose controlled trial-and-error experiments. Reference and candidate memory systems run on matched tasks and budgets, retaining their own failure histories. An optional Replay gate controls experience exposure to study exploration and exploitation. Shared records of contexts, actions and outcomes support performance comparison, behavior inspection, paired statistical analysis and conditional power. Use the results to improve memory in simulation, then reconnect the evaluated implementation to the same real agent.</desc>
+  <defs>
+    <style>
+      text{font-family:"Helvetica Neue",Arial,sans-serif;font-weight:400;fill:#e6edf3}
+      .phase{font-size:26px;font-weight:500;letter-spacing:1px;fill:#9fb3c8}
+      .brand{font-size:42px;font-weight:600}
+      .main{font-size:34px;font-weight:600}
+      .title{font-size:30px;font-weight:600}
+      .key{font-size:30px;font-weight:500}
+      .label{font-size:28px;font-weight:500}
+      .detail{font-size:28px;fill:#9fb3c8}
+      .center{text-anchor:middle}.blue{fill:#58a6ff}.teal{fill:#48c5ba}
+      .edge-label{paint-order:stroke;stroke:#0d1117;stroke-width:10;stroke-linejoin:round}
+      .frame{fill:#0d1117;stroke:#344357;stroke-width:1.5}
+      .system{fill:#161e2a;stroke:#50647a;stroke-width:1.8}
+      .node{fill:#0d1117;stroke:#50647a;stroke-width:1.8}
+      .component{fill:#0d1117;stroke:#8da2b7;stroke-width:1.8}
+      .memory-engine{fill:#0d1117;stroke:#48c5ba;stroke-width:1.8}
+      .memory{fill:#122d30;stroke:#286665;stroke-width:1.8}
+      .rule{fill:none;stroke:#344357;stroke-width:1.2}
+      .flow{fill:none;stroke:#8da2b7;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow-gray)}
+      .context{fill:none;stroke:#48c5ba;stroke-width:2.2;stroke-linejoin:round;marker-end:url(#arrow-teal)}
+      .integration{fill:none;stroke:#58a6ff;stroke-width:2.6;stroke-linejoin:round;marker-end:url(#arrow-blue)}
+    </style>
+    <marker id="arrow-gray" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8da2b7"/></marker>
+    <marker id="arrow-teal" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#48c5ba"/></marker>
+    <marker id="arrow-blue" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#58a6ff"/></marker>
+    <symbol id="browser" viewBox="0 0 200 124">
+      <rect x="1" y="1" width="198" height="122" rx="4" class="node"/><path d="M1 26H199" class="rule"/>
+      <circle cx="13" cy="13" r="2.5" fill="#50647a"/><circle cx="24" cy="13" r="2.5" fill="#50647a"/><circle cx="35" cy="13" r="2.5" fill="#50647a"/>
+      <rect x="48" y="8" width="135" height="10" rx="2" fill="#161e2a"/><path d="M16 52H62M16 84H46" class="rule"/>
+      <rect x="81" y="42" width="102" height="20" rx="2" class="node"/><rect x="81" y="76" width="102" height="20" rx="2" class="node"/>
+    </symbol>
+    <symbol id="shopping" viewBox="0 0 200 124">
+      <rect x="1" y="1" width="198" height="122" rx="4" class="node"/><path d="M1 26H199" class="rule"/>
+      <circle cx="13" cy="13" r="2.5" fill="#50647a"/><circle cx="24" cy="13" r="2.5" fill="#50647a"/><circle cx="35" cy="13" r="2.5" fill="#50647a"/>
+      <rect x="48" y="8" width="135" height="10" rx="2" fill="#161e2a"/>
+      <rect x="16" y="45" width="45" height="42" rx="2" fill="#1d2a3b"/><rect x="78" y="45" width="45" height="42" rx="2" fill="#1d2a3b"/><rect x="140" y="45" width="45" height="42" rx="2" fill="#1d2a3b"/>
+      <path d="M16 102H52M78 102H114M140 102H176" class="rule"/>
+    </symbol>
+  </defs>
+  <rect width="1600" height="1280" fill="#0d1117"/>
+
+  <g id="same-real-world" aria-label="Original real tasks, tools, agent and memory in one domain">
+    <text x="24" y="46" class="phase">REAL WORLD</text>
+    <text x="24" y="92" class="key">Tasks &amp; tools</text>
+    <rect x="24" y="116" width="240" height="992" rx="5" class="frame"/>
+    <use href="#browser" x="44" y="152" width="200" height="124"/>
+    <text x="144" y="316" class="detail center">Browser &amp; UI</text>
+    <use href="#shopping" x="44" y="344" width="200" height="124"/>
+    <text x="144" y="510" class="detail center">Shopping</text>
+    <text x="144" y="558" class="key center">...</text>
+    <path d="M44 586H244" class="rule"/>
+    <path d="M104 736V586" class="flow"/><text x="104" y="634" class="detail center edge-label">actions</text>
+    <path d="M184 586V736" class="flow"/><text x="184" y="690" class="detail center edge-label">feedback</text>
+    <rect x="44" y="736" width="200" height="72" rx="3" class="component"/>
+    <text x="144" y="782" class="key center">Your agent</text>
+    <path d="M104 958V808" class="context"/><text x="104" y="862" class="detail teal center edge-label">context</text>
+    <path d="M184 808V958" class="context"/><text x="184" y="918" class="detail teal center edge-label">trace</text>
+    <rect x="44" y="958" width="200" height="108" rx="3" class="memory-engine"/>
+    <text x="144" y="1000" class="key teal center"><tspan x="144">Memory</tspan><tspan x="144" dy="38">system</tspan></text>
+  </g>
+
+  <g id="simulation-stage" aria-label="VRL-Bench composition, controlled execution and statistical evaluation">
+    <text x="312" y="46" class="phase blue">SIMULATION</text>
+    <text x="312" y="92" class="brand">VRL-Bench</text>
+    <rect x="312" y="116" width="1264" height="1136" rx="5" class="system"/>
+
+    <g id="composition-interfaces" aria-label="Replaceable memory methods, actor models and workload adapters">
+      <rect x="336" y="140" width="1200" height="104" class="frame"/>
+      <path d="M736 156V228M1136 156V228" class="rule"/>
+      <text x="360" y="182" class="title">Memory library</text><text x="360" y="222" class="detail">Reflexion · ACE* · ...</text>
+      <text x="760" y="182" class="title">Models</text><text x="760" y="222" class="detail">OpenAI · DeepSeek · ...</text>
+      <text x="1160" y="182" class="title">Task adapters</text><text x="1160" y="222" class="detail">MiniWoB · WebShop · ...</text>
+      <path d="M536 244V270" class="flow"/><path d="M936 244V270" class="flow"/><path d="M1336 244V270" class="flow"/>
+    </g>
+
+    <g id="experiment-control" aria-label="Matched cases, actor, trial budgets, interaction limits, resets and success stopping">
+      <rect x="336" y="270" width="1200" height="60" rx="3" class="node"/>
+      <text x="360" y="309" class="title">Experiment control</text>
+      <text x="1512" y="309" class="detail" text-anchor="end">Cases · pairing · trial &amp; step limits · reset</text>
+      <path d="M936 330V362" class="flow"/>
+    </g>
+
+    <g id="simulation-runtime" aria-label="Complete-trial execution and matched comparisons under the same conditions">
+      <rect x="336" y="362" width="1200" height="508" rx="4" class="frame" style="stroke:#58a6ff;stroke-width:1.8"/>
+      <rect x="336" y="362" width="1200" height="62" fill="#1d2a3b"/>
+      <text x="360" y="403" class="main blue">Trial-and-error simulation</text>
+      <text x="1512" y="402" class="detail" text-anchor="end">Up to T trials · stop on success</text>
+      <path d="M830 446V846" class="rule"/>
+
+      <g id="complete-trial-execution" aria-label="A complete actor-environment loop; failed executed traces form per-run history">
+        <text x="360" y="472" class="title">Complete-trial loop</text>
+        <rect x="360" y="512" width="156" height="72" rx="3" class="component"/><text x="438" y="558" class="key center">Actor</text>
+        <rect x="590" y="512" width="218" height="72" rx="3" class="component"/><text x="699" y="558" class="key center">Environment</text>
+        <path d="M516 534H590" class="flow"/><text x="553" y="520" class="detail center">act</text>
+        <path d="M590 568H516" class="flow"/><text x="553" y="626" class="detail center">observe</text>
+        <g id="case-replay-buffer" aria-label="Memory reads retained failed traces; each run has its own history, cleared between cases">
+          <rect x="360" y="690" width="156" height="86" rx="3" class="memory-engine"/>
+          <text x="438" y="726" class="key teal center"><tspan x="438">Memory</tspan><tspan x="438" dy="34">system</tspan></text>
+          <g id="execution-history-store" aria-label="Retained failed-trial traces, represented as stacked records">
+            <rect x="602" y="702" width="218" height="86" rx="3" class="memory"/>
+            <rect x="596" y="696" width="218" height="86" rx="3" class="memory"/>
+            <rect x="590" y="690" width="218" height="86" rx="3" class="memory"/>
+            <text x="699" y="726" class="label teal center">Replay buffer</text><text x="699" y="760" class="detail teal center">Failed traces</text>
+          </g>
+          <path d="M590 734H516" class="context"/>
+          <path d="M438 690V584" class="context"/><text x="438" y="646" class="detail teal center edge-label">context</text>
+          <path d="M699 584V690" class="context"/><text x="720" y="646" class="detail teal">trace</text>
+          <text x="584" y="830" class="detail center">Per-run history</text>
+        </g>
+      </g>
+
+      <g id="matched-trial-runs" aria-label="Reference and candidate methods use matched tasks and budgets; Retry is one possible reference">
+        <text x="852" y="472" class="title">Matched comparisons</text>
+        <text x="852" y="520" class="label">Reference</text><text x="1512" y="520" class="detail" text-anchor="end">Retry or memory</text>
+        <rect x="852" y="542" width="142" height="60" rx="3" class="node"/><text x="923" y="580" class="label center">Trial 1</text>
+        <rect x="1100" y="542" width="142" height="60" rx="3" class="node"/><text x="1171" y="580" class="label center">Trial 2</text>
+        <rect x="1370" y="542" width="142" height="60" rx="3" class="node"/><text x="1441" y="580" class="label center">Trial T</text>
+        <path d="M994 572H1100" class="flow"/><path d="M1242 572H1370" class="flow" stroke-dasharray="5 5"/>
+        <text x="1306" y="558" class="label center">...</text>
+        <g id="optional-reference-memory" aria-label="A memory-based reference retains context; memory-free Retry does not">
+          <path d="M923 602V630H1441" fill="none" stroke="#48c5ba" stroke-width="2" stroke-dasharray="4 4"/>
+          <path d="M1171 630V602" class="context" stroke-dasharray="4 4"/><path d="M1441 630V602" class="context" stroke-dasharray="4 4"/>
+        </g>
+        <text x="852" y="674" class="label teal">Candidate</text><text x="1512" y="674" class="detail" text-anchor="end">Memory method</text>
+        <rect x="852" y="696" width="142" height="60" rx="3" class="node"/><text x="923" y="734" class="label center">Trial 1</text>
+        <rect x="1100" y="696" width="142" height="60" rx="3" class="node"/><text x="1171" y="734" class="label center">Trial 2</text>
+        <rect x="1370" y="696" width="142" height="60" rx="3" class="node"/><text x="1441" y="734" class="label center">Trial T</text>
+        <path d="M994 726H1100" class="flow"/><path d="M1242 726H1370" class="flow" stroke-dasharray="5 5"/>
+        <text x="1306" y="712" class="label center">...</text>
+        <g id="candidate-replay-gate" aria-label="Normal next-trial context bypasses the separately configured optional gate">
+          <g id="candidate-history-store" aria-label="The candidate run's own replay buffer">
+            <rect x="864" y="798" width="254" height="58" rx="3" class="memory"/>
+            <rect x="858" y="792" width="254" height="58" rx="3" class="memory"/>
+            <rect x="852" y="786" width="254" height="58" rx="3" class="memory"/>
+            <text x="979" y="823" class="detail teal center">Replay buffer</text>
+          </g>
+          <path d="M923 756V786" class="context"/>
+          <path d="M1070 786V772H1441" fill="none" stroke="#48c5ba" stroke-width="2.2"/>
+          <path d="M1171 772V756" class="context"/><path d="M1441 772V756" class="context"/>
+          <g id="optional-replay-gate" aria-label="Optional experience-exposure control with a configurable policy">
+            <rect x="1184" y="786" width="328" height="72" rx="3" class="node" stroke-dasharray="6 4"/>
+            <text x="1200" y="816" class="label">Replay gate</text><text x="1496" y="816" class="detail" text-anchor="end">optional</text>
+            <text x="1348" y="848" class="detail center">e.g., ε policy</text>
+            <path d="M1348 786V772" class="flow" stroke-dasharray="4 4"/>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <g id="shared-run-records" aria-label="Shared records of contexts, actions, observations and outcomes support each analysis">
+      <path d="M936 870V902" class="flow"/>
+      <path d="M336 902H1514L1536 924V962H336Z" class="node"/><path d="M1514 902V924H1536" class="rule"/>
+      <text x="360" y="941" class="title">Run records</text><text x="1512" y="941" class="detail" text-anchor="end">Contexts · actions · observations · outcomes</text>
+      <path d="M936 962V994" class="flow"/>
+    </g>
+
+    <g id="evaluation-layer" aria-label="Four analyses independently consume the same records: task performance, behavior, paired inference and conditional power">
+      <rect x="336" y="994" width="1200" height="146" rx="3" class="frame"/>
+      <path d="M636 1014V1120M936 1014V1120M1236 1014V1120" class="rule"/>
+      <text x="360" y="1038" class="title">Task performance</text><text x="360" y="1080" class="detail">Success · recovery</text><text x="360" y="1116" class="detail">Trials to solve</text>
+      <text x="660" y="1038" class="title">Compare &amp; inspect</text><text x="660" y="1080" class="detail">Contexts &amp; actions</text>
+      <text x="960" y="1038" class="title">Paired analysis</text><text x="960" y="1080" class="detail">Effects &amp; intervals</text><text x="960" y="1116" class="detail">Exact tests</text>
+      <g id="conditional-power" aria-label="Conditional statistical power under the observed alternative">
+        <text x="1260" y="1038" class="title">Statistical power</text><text x="1260" y="1080" class="detail">Conditional power</text>
+      </g>
+    </g>
+
+    <g id="simulation-results-and-iteration" aria-label="Results support further simulation under task criteria and reuse in the same real agent">
+      <path d="M936 1140V1172" class="flow"/>
+      <rect x="336" y="1172" width="1200" height="56" rx="3" class="node"/>
+      <text x="360" y="1209" class="title">Simulation results</text><text x="1512" y="1209" class="detail" text-anchor="end">Task-specific criteria</text>
+      <path d="M1536 1200H1554V300H1536" class="flow"/>
+    </g>
+  </g>
+  <g id="real-to-sim" aria-label="Represent the original real task family as executable simulation tasks">
+    <path d="M264 390H312" class="integration"/>
+  </g>
+  <g id="sim-to-same-real" aria-label="Return the evaluated memory implementation to the same real agent">
+    <path d="M336 1200H144V1066" class="integration"/>
+    <text x="144" y="1144" class="detail blue center edge-label"><tspan x="144">Reuse evaluated</tspan><tspan x="144" dy="36">memory</tspan></text>
+  </g>
+</svg>

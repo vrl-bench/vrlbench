@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+!.env.example
+.venv*/
+external/
+runs/
+output/
+rebuild-output/
+reproduced_data/
+reproduced_figures/
+*.egg-info/
+build/
+dist/

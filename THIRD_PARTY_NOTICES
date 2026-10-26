@@ -1,0 +1,34 @@
+VRL-Bench first-party code is licensed under the root MIT LICENSE.
+Third-party components retain their own licenses.
+
+ACE prompt adaptations (Apache-2.0)
+
+  Source: ACE-AppWorld, commit 9f3e92155345a9159f3a8b25abc334eeca05b545
+  Adapted files: src/vrlbench/runtime/er/source_prompts/ace_interactive_*.txt
+  License: src/vrlbench/runtime/er/source_prompts/ACE_LICENSE
+
+Dynamic Cheatsheet prompt adaptation (MIT)
+
+  Source: Dynamic Cheatsheet, commit 5cfe3c37e8e52b1d858d0f3df46e7f17c50991b9
+  Adapted file: src/vrlbench/runtime/er/source_prompts/dynamic_cheatsheet_cumulative.txt
+  License: src/vrlbench/runtime/er/source_prompts/DYNAMIC_CHEATSHEET_LICENSE
+
+Reflexion prompt adaptations (MIT)
+
+  Source: Reflexion, commit 218cf0ef1df84b05ce379dd4a8e47f17766733a0
+  Adapted files: src/vrlbench/runtime/er/source_prompts/reflexion_*.txt
+  License: src/vrlbench/runtime/er/source_prompts/REFLEXION_LICENSE
+
+The prompt-specific adaptation descriptions are retained in
+src/vrlbench/runtime/er/source_prompts/THIRD_PARTY_NOTICES.
+
+Synapse MiniWoB runtime overlay (MIT)
+
+  Source: Synapse, commit 89dbbf8f617fdfb6d97b27324719db95da6ccdff
+  Modified files: src/vrlbench/environments/synapse_overlay/synapse/envs/miniwob/*.py
+  License: src/vrlbench/environments/synapse_overlay/LICENSE
+
+Only the MiniWoB runtime overlay is redistributed; the remaining Synapse
+checkout must be obtained separately. WebShop source, benchmark data, browsers,
+model weights, and installed runtime dependencies are not included in the SDK
+and remain subject to their original terms.
