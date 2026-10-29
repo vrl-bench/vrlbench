@@ -16,6 +16,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from vrlbench.replay_viewer import export_replay, replay_data, static_page_html
+from vrlbench.inspection import inspect_case, render_inspection
+from vrlbench.results import SimulationResult
 
 
 def trace(initial="initial", action="click[item]", observation="detail"):
@@ -90,7 +92,7 @@ get('replay-data').textContent=JSON.stringify(input.data);get('speed').value='16
 eval(input.script);
 function snapshot(){return {states:Object.fromEntries(get('evaluation-state').children.map(r=>r.children.map(c=>c.textContent))),
   heading:get('action-heading').textContent,action:get('action-code').textContent,feedback:get('feedback-text').textContent,
-  outcome_hidden:get('outcome').hidden,memory_after_hidden:get('memory-state-after-wrap').hidden,
+  outcome_hidden:get('outcome').hidden,outcome:get('outcome').textContent,after_disabled:get('after').disabled,memory_after_hidden:get('memory-state-after-wrap').hidden,
   metadata:get('metadata').textContent,error:get('error').textContent,
   images:get('observation').children.filter(child=>child.tagName==='IMG').map(child=>child.src),
   mode:get('observation-mode').textContent};}
@@ -108,6 +110,105 @@ process.stdout.write(JSON.stringify(out));
         snapshots = json.loads(result.stdout)
         self.assertTrue(all(not item["error"] for item in snapshots), snapshots)
         return snapshots
+
+    def set_partial(self, *, pending=True, completed_environment=False):
+        self.payload["status"] = "failed"
+        self.payload["counts"] = {"planned": 1, "completed": 0}
+        self.payload["metrics"] = {"sr_at_t": None, "rr_at_t": None, "avg_t_at_t": None}
+        case = self.payload["cases"][0]
+        case["trials"] = []
+        case["in_progress_trial"] = {
+            "trial": 0, "success": None, "status": "interrupted",
+            "phase": "environment_complete" if completed_environment else "awaiting_environment_feedback",
+            "context": "actual retained memory", "system_context": "", "user_context": "actual retained memory",
+            "actor_trajectory": "raw model transcript",
+            "policy_evidence": {"schema_version": 1, "task": "Find the item",
+                "initial_observation": "initial", "trial_close_reason": "running",
+                "steps": [{"action": "click[item]", "observation": "detail"}]},
+            "trial_metadata": {"budget_unit": "environment_action_or_invalid_response",
+                "max_environment_steps": 3, "environment_resets": 1, "environment_steps": 1,
+                "action_attempts": 2, "remaining_environment_steps": 1,
+                "invalid_action_events": [invalid_event(0, 0, "unparseable reply")]},
+            "pending_action": {"action": "click[buy]", "raw_response": "click[buy]",
+                "before_observation": "detail", "budget_used_before": 2,
+                "environment_steps_before": 1} if pending else None,
+            "environment_result": {"success": False, "score": 0.0} if completed_environment else None,
+            "error": {"type": "ConnectionError" if pending else "WriterError"}}
+        self.save()
+        return case["in_progress_trial"]
+
+    def test_interrupted_first_trial_retains_pending_action_without_after_feedback(self):
+        partial = self.set_partial()
+        before = self.path.read_bytes()
+        trial = replay_data([self.run])["runs"][0]["cases"][0]["trials"][0]
+        self.assertTrue(trial["incomplete"])
+        self.assertIsNone(trial["success"])
+        self.assertEqual(trial["memory"]["user_context"], partial["user_context"])
+        rejected, confirmed, pending = trial["frames"]
+        self.assertEqual([f["kind"] for f in trial["frames"]],
+                         ["invalid_action", "environment_action", "pending_action"])
+        self.assertEqual(confirmed["after_observation"], "detail")
+        self.assertEqual(pending["action"], "click[buy]")
+        self.assertEqual(pending["before_observation"], "detail")
+        self.assertEqual((pending["budget_used_before"], pending["environment_steps_before"]), (2, 1))
+        for field in ("after_observation", "after_image", "after_html", "budget_used_after",
+                      "environment_steps_after"):
+            self.assertIsNone(pending[field])
+        start, interrupted = self.viewer_positions([{"position": 4}])
+        self.assertTrue(interrupted["after_disabled"])
+        self.assertIn("feedback was not recorded", interrupted["feedback"])
+        self.assertEqual(interrupted["states"]["Action budget used"], "2")
+        self.assertEqual(interrupted["states"]["Environment steps"], "1")
+        self.assertIn("Trial interrupted", interrupted["outcome"])
+        self.assertTrue(interrupted["memory_after_hidden"])
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(json.loads(before)["cases"][0]["trials"], [])
+        self.assertIsNone(json.loads(before)["metrics"]["sr_at_t"])
+        self.payload["status"] = "timeout"
+        partial["status"] = "in_progress"
+        self.save()
+        html = export_replay([self.run], self.root / "timed-out.html").read_text(encoding="utf-8")
+        timed_out = self.viewer_positions([{"position": 4}], html=html)[-1]
+        self.assertIn("Trial interrupted", timed_out["outcome"])
+        self.assertNotIn("Trial in progress", timed_out["outcome"])
+        self.assertEqual(replay_data([self.run])["runs"][0]["cases"][0]["trials"][0]["status"],
+                         "in_progress")  # Preserve the recorded checkpoint; only the UI derives interruption.
+        inspection = render_inspection(inspect_case(SimulationResult.from_path(self.path), "sample_0000"))
+        self.assertIn("INCOMPLETE (interrupted; last saved checkpoint: in_progress)", inspection)
+
+    def test_environment_finished_before_writer_error_still_has_no_finalized_trial(self):
+        self.set_partial(pending=False, completed_environment=True)
+        trial = replay_data([self.run])["runs"][0]["cases"][0]["trials"][0]
+        self.assertIsNone(trial["success"])
+        self.assertEqual(trial["environment_result"], {"success": False, "score": 0.0})
+        _, final = self.viewer_positions([{"position": 3}])
+        self.assertIn("Trial interrupted", final["outcome"])
+        self.assertNotIn("Trial ended without success", final["outcome"])
+        self.assertTrue(final["memory_after_hidden"])
+        self.assertEqual(final["states"]["Environment result before interruption"], "No success · score 0")
+
+    def test_partial_reset_without_observation_does_not_invent_memory_or_a_frame(self):
+        partial = self.set_partial(pending=False)
+        partial.update(phase="reset", policy_evidence=None, context=None,
+                       system_context=None, user_context=None)
+        partial["trial_metadata"] = {}
+        self.save()
+        trial = replay_data([self.run])["runs"][0]["cases"][0]["trials"][0]
+        self.assertEqual(trial["frames"], [])
+        self.assertIsNone(trial["initial_observation"])
+        self.assertIsNone(trial["memory"]["user_context"])
+        summary = self.viewer_positions([])[0]
+        self.assertTrue(summary["after_disabled"])
+        self.assertIn("Trial interrupted", summary["outcome"])
+        self.assertEqual(summary["images"], [])
+
+    def test_partial_cannot_claim_success_or_follow_the_trial_budget(self):
+        for field, value in (("success", False), ("trial", 1), ("trial", 6)):
+            self.set_partial()
+            self.payload["cases"][0]["in_progress_trial"][field] = value
+            self.save()
+            with self.assertRaises(ValueError):
+                replay_data([self.run])
 
     def test_rejected_response_precedes_native_action_without_environment_transition(self):
         raw = b"\x89PNG\r\n\x1a\nreset"

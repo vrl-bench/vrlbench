@@ -206,14 +206,27 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
         for identity in selected:
             view = inspect_case(result, identity)["case"]
             case = {"case_id": identity, "task": view.get("task"), "trials": []}
-            for row in view["trials"]:
-                evidence = _linear_trace(row.get("policy_trajectory") or "")
+            original = next(c for c in payload["cases"] if c["case_id"] == identity)
+            partial = view.get("in_progress_trial")
+            for row in [*view["trials"], *([partial] if partial is not None else [])]:
+                incomplete = row is partial
+                evidence = (deepcopy(row.get("policy_evidence")) if incomplete else
+                            _linear_trace(row.get("policy_trajectory") or ""))
+                if incomplete and evidence is not None:
+                    if (not isinstance(evidence, dict) or not isinstance(evidence.get("task"), str)
+                            or not isinstance(evidence.get("initial_observation"), str)
+                            or not isinstance(evidence.get("steps"), list)
+                            or any(not isinstance(step, dict) or set(step) != {"action", "observation"}
+                                   or not isinstance(step["action"], str) or not step["action"].strip()
+                                   or not isinstance(step["observation"], str)
+                                   for step in evidence["steps"])):
+                        raise ValueError("Cannot replay malformed in-progress action observations")
                 metadata = row.get("trial_metadata") or {}
                 memory = {key: deepcopy(row.get(key)) for key in
                           ("context", "system_context", "user_context")}
                 # Controller state is distinct from the exact actor input.
-                original = next(c for c in payload["cases"] if c["case_id"] == identity)
-                stored = next(t for t in original["trials"] if t["trial"] == row["trial"])
+                stored = row if incomplete else next(
+                    t for t in original["trials"] if t["trial"] == row["trial"])
                 for key in ("controller_state_pre", "controller_state"):
                     memory[key] = deepcopy(stored.get(key))
                 memory["state_pre"] = deepcopy(stored.get("memory_state_pre"))
@@ -226,12 +239,16 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
                          "initial_html": None, "initial_snapshot_notice": None,
                          "raw_actor_trajectory": row.get("actor_trajectory"),
                          "frame_notice": None}
+                if incomplete:
+                    trial.update(incomplete=True, status=row["status"], phase=row["phase"],
+                                 error=deepcopy(row.get("error")),
+                                 environment_result=deepcopy(row.get("environment_result")))
                 if evidence is None:
                     trial["frame_notice"] = "No canonical per-action observation record is available."
                 else:
                     case["task"] = evidence["task"]
                     trial["initial_observation"] = evidence["initial_observation"]
-                    trial["close_reason"] = metadata.get("trial_close_reason") or evidence["trial_close_reason"]
+                    trial["close_reason"] = metadata.get("trial_close_reason") or evidence.get("trial_close_reason")
                     observations = [evidence["initial_observation"], *(s["observation"] for s in evidence["steps"])]
                     snapshots = {}
                     items = [*metadata.get("replay_observations", []),
@@ -274,6 +291,33 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
                                 budget_used_before=number + rejected_count,
                                 budget_used_after=number + rejected_count + 1)
                         trial["frames"].append(frame)
+                pending = row.get("pending_action") if incomplete else None
+                if pending is not None:
+                    if evidence is None:
+                        raise ValueError("Cannot replay a pending action without a recorded observation")
+                    native = len(evidence["steps"])
+                    rejected = sum(len(events) for events in _invalid_events(metadata, native).values())
+                    if (not isinstance(pending, dict)
+                            or not isinstance(pending.get("action"), str) or not pending["action"].strip()
+                            or not isinstance(pending.get("raw_response"), str)
+                            or type(pending.get("environment_steps_before")) is not int
+                            or pending["environment_steps_before"] != native
+                            or type(pending.get("budget_used_before")) is not int
+                            or pending["budget_used_before"] != native + rejected
+                            or pending.get("before_observation") != observations[-1]):
+                        raise ValueError("Cannot replay malformed pending environment action")
+                    before = snapshots.get(native, (None, None, None))
+                    trial["frames"].append({
+                        "kind": "pending_action", "action": pending["action"],
+                        "raw_response": pending["raw_response"],
+                        "step_index": native, "budget_used_before": pending["budget_used_before"],
+                        "budget_used_after": None, "environment_steps_before": native,
+                        "environment_steps_after": None,
+                        "before_observation": pending["before_observation"], "after_observation": None,
+                        "before_image": before[0], "after_image": None,
+                        "before_html": before[1], "after_html": None,
+                        "before_snapshot_notice": before[2],
+                        "after_snapshot_notice": "Environment feedback was not recorded; execution result is unknown."})
                 case["trials"].append(trial)
             run["cases"].append(case)
         runs.append(run)

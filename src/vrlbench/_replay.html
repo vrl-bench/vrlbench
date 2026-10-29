@@ -66,10 +66,12 @@
   const currentTrial = () => currentCase().trials[state.trial];
   const currentFrame = () => currentTrial().frames[state.step];
   const isRejected = frame => frame.kind==='invalid_action';
+  const isPending = frame => frame.kind==='pending_action';
+  const partialInterrupted = (run,trial) => trial.status==='interrupted'||['failed','timeout','timed_out','cancelled'].includes(run.status);
   const frameLabel = frame => isRejected(frame)?'Rejected actor response':frame.action;
   const usesAttemptBudget = trial => (trial.metadata||{}).budget_unit==='environment_action_or_invalid_response';
   function stop(){state.playing=false;if(state.timer!==null)clearTimeout(state.timer);state.timer=null;$('play').textContent="Play";}
-  function positions(){const out=[];currentCase().trials.forEach((trial,ti)=>trial.frames.forEach((frame,si)=>{out.push({trial:ti,step:si,after:false});out.push({trial:ti,step:si,after:true});}));return out;}
+  function positions(){const out=[];currentCase().trials.forEach((trial,ti)=>trial.frames.forEach((frame,si)=>{out.push({trial:ti,step:si,after:false});if(!isPending(frame))out.push({trial:ti,step:si,after:true});}));return out;}
   function positionIndex(all){return all.findIndex(p=>p.trial===state.trial&&p.step===state.step&&p.after===state.after);}
   function selectPosition(index){const all=positions();if(!all.length)return false;index=Math.max(0,Math.min(all.length-1,index));Object.assign(state,all[index]);render();return true;}
   function advance(offset){const all=positions();return selectPosition(positionIndex(all)+offset);}
@@ -82,8 +84,8 @@
     $('trial-count').textContent=task.trials.length+' recorded';
     task.trials.forEach((trial,ti)=>{
       const section=node('div','trial-block');
-      const rejected=trial.frames.filter(isRejected).length;const native=trial.frames.length-rejected;
-      const heading=node('button','trial-heading'+(ti===state.trial?' active-trial':''));heading.type='button';heading.append(node('span','', 'Trial '+trial.trial_number),node('span','subtle',native+' action'+(native===1?'':'s')+(rejected?' · '+rejected+' rejected':'')));
+      const rejected=trial.frames.filter(isRejected).length;const native=trial.frames.filter(frame=>!isRejected(frame)&&!isPending(frame)).length;const pending=trial.frames.filter(isPending).length;
+      const heading=node('button','trial-heading'+(ti===state.trial?' active-trial':''));heading.type='button';heading.append(node('span','', 'Trial '+trial.trial_number+(trial.incomplete?' · incomplete':'')),node('span','subtle',native+' action'+(native===1?'':'s')+(rejected?' · '+rejected+' rejected':'')+(pending?' · '+pending+' unconfirmed':'')));
       heading.addEventListener('click',()=>{stop();state.trial=ti;state.step=0;state.after=false;render();});
       section.appendChild(heading);
       const list=node('div','step-list');
@@ -139,7 +141,7 @@
     if(Number.isInteger(run.trial_budget))addState('Trials remaining',String(Math.max(0,run.trial_budget-trial.trial_number)));
   }
   function renderEvaluation(run,trial,frame,isFinal){
-    $('phase-end').textContent='Trial end';
+    $('phase-end').textContent=trial.incomplete?'Incomplete':'Trial end';
     $('evaluation-state').replaceChildren();const metadata=trial.metadata||{};const rejected=isRejected(frame);const stepIndex=Number.isInteger(frame.step_index)?frame.step_index:frame.after_environment_step;const budget=Number.isInteger(metadata.max_environment_steps)?metadata.max_environment_steps:run.max_environment_steps;
     renderTrialBudget(run,trial);
     if(usesAttemptBudget(trial)){
@@ -154,7 +156,9 @@
       addState('Action',rejected?'No environment action':String(stepIndex+1)+' / '+(isKnown(budget)?budget:'not recorded'));
       if(Number.isInteger(budget)){const remaining=budget-stepIndex-(!rejected&&state.after?1:0);addState('Actions remaining',String(remaining)+(remaining<0?' (exceeded)':''));}
     }
-    addState('Position',rejected?(state.after?'After response rejection; environment not executed':'Before response rejection'):(state.after?'After environment feedback':'Before action execution'));
+    if(trial.incomplete)addState('Last saved phase',recorded(trial.phase));
+    if(trial.incomplete)addState('Trial status',partialInterrupted(run,trial)?'Interrupted · last saved state':'In progress · not finalized');
+    addState('Position',isPending(frame)?'Selected action; environment execution unconfirmed':rejected?(state.after?'After response rejection; environment not executed':'Before response rejection'):(state.after?'After environment feedback':'Before action execution'));
     if(rejected)addState('Budget charge',state.after?'1 action opportunity; 0 environment steps':'Not charged yet at this position');
     if(metadata.environment_resets===1)addState('Initial reset','Recorded');
     else addState('Initial reset','Not identified in record');
@@ -163,16 +167,18 @@
       addState('Replay gate',typeof exposed==='boolean'?(exposed?'Memory exposed':'Memory withheld'):'Recorded; see metadata');
     }
     document.querySelectorAll('.flow span').forEach(el=>el.classList.remove('current'));
-    $('phase-'+(isFinal?'end':state.after?'feedback':'act')).classList.add('current');
-    const outcome=$('outcome');outcome.hidden=!isFinal;outcome.replaceChildren();outcome.className='outcome';
-    if(isFinal){const success=trial.success;outcome.classList.toggle('fail',success===false);outcome.classList.toggle('unknown',typeof success!=='boolean');outcome.append(node('strong','',success===true?'Task success':success===false?'Trial ended without success':'Trial outcome not recorded'));outcome.appendChild(node('small','',trial.close_reason?'End reason: '+trial.close_reason:'End reason not recorded.'));}
-    $('metadata').textContent=isFinal?recorded(trial.metadata):'End-of-trial metadata available at final position.';
+    $('phase-'+(isFinal||isPending(frame)?'end':state.after?'feedback':'act')).classList.add('current');
+    const outcome=$('outcome');const partialEnd=trial.incomplete&&(isFinal||isPending(frame));outcome.hidden=!isFinal&&!partialEnd;outcome.replaceChildren();outcome.className='outcome';
+    if(partialEnd){const result=trial.environment_result;if(result&&typeof result.success==='boolean')addState('Environment result before interruption',(result.success?'Success':'No success')+(typeof result.score==='number'?' · score '+result.score:''));outcome.classList.add('unknown');outcome.append(node('strong','',partialInterrupted(run,trial)?'Trial interrupted':'Trial in progress'));outcome.appendChild(node('small','', 'No finalized trial outcome.'+(trial.error&&trial.error.type?' Error: '+trial.error.type:'')));}
+    else if(isFinal){const success=trial.success;outcome.classList.toggle('fail',success===false);outcome.classList.toggle('unknown',typeof success!=='boolean');outcome.append(node('strong','',success===true?'Task success':success===false?'Trial ended without success':'Trial outcome not recorded'));outcome.appendChild(node('small','',trial.close_reason?'End reason: '+trial.close_reason:'End reason not recorded.'));}
+    $('metadata').textContent=isFinal||partialEnd?recorded(trial.metadata):'End-of-trial metadata available at final position.';
   }
   function render(){
     const run=currentRun(),task=currentCase(),trial=currentTrial();
     $('before').textContent='Before action';$('after').textContent='After action';$('action-heading').textContent='Selected action';$('feedback-heading').textContent='Environment feedback';$('phase-act').textContent='Act';$('phase-feedback').textContent='Feedback';
     $('task-title').textContent=task.task||task.case_id;$('method-tag').textContent=typeof run.method==='string'?run.method:recorded(run.method);$('model-label').textContent=typeof run.model==='string'?run.model:run.model&&run.model.name?run.model.name:'Model not recorded';$('run-status').textContent='Run '+(run.status||'status unknown');
     $('frame-note').textContent=typeof run.recording_notice==='string'&&run.recording_notice.trim()?run.recording_notice:'Replay reads saved observations and actions. It does not run the agent again.';
+    if(trial&&trial.incomplete&&partialInterrupted(run,trial))$('frame-note').textContent+=' Run '+run.status+' · last saved checkpoint.';
     $('raw-actor-record').textContent=recorded(trial&&trial.raw_actor_trajectory);
     renderTimeline();
     if(!trial||!trial.frames.length){
@@ -187,25 +193,26 @@
       $('before').disabled=true;$('after').disabled=true;$('previous').disabled=true;$('next').disabled=true;$('play').disabled=true;$('progress').disabled=true;$('progress').max='0';$('progress').value='0';$('progress').setAttribute('aria-valuetext',knownEmpty?'Zero environment actions':'Per-action record not available');$('progress-label').textContent=knownEmpty?'0 / 0':'Not recorded';
       document.querySelectorAll('.flow span').forEach(el=>el.classList.remove('current'));
       $('phase-end').textContent=knownEmpty?'Trial end':'Saved outcome';
-      renderMemory(trial||{memory:{}},Boolean(trial));
+      renderMemory(trial||{memory:{}},Boolean(trial&&!trial.incomplete));
       $('evaluation-state').replaceChildren();
       if(trial){renderTrialBudget(run,trial);addState('Position',knownEmpty?'Trial record; no action dispatched':'Saved trial summary; action sequence unknown');}
       addState('Action count',knownEmpty?'0':'Not recorded');
       if(trial&&usesAttemptBudget(trial)){const metadata=trial.metadata||{};addState('Action budget used',Number.isInteger(metadata.action_attempts)?String(metadata.action_attempts):'Not recorded');addState('Action budget remaining',Number.isInteger(metadata.remaining_environment_steps)?String(metadata.remaining_environment_steps):'Not recorded');}
       $('metadata').textContent=recorded(trial&&trial.metadata);
       const outcome=$('outcome');outcome.replaceChildren();outcome.className='outcome';outcome.hidden=!trial;
-      if(trial){const success=trial.success;outcome.classList.toggle('fail',success===false);outcome.classList.toggle('unknown',typeof success!=='boolean');outcome.append(node('strong','',success===true?'Recorded outcome: task success':success===false?'Recorded outcome: no task success':'Trial outcome not recorded'));outcome.appendChild(node('small','',trial.close_reason?'Recorded end reason: '+trial.close_reason:'End reason not recorded.'));if(typeof success==='boolean'||trial.close_reason)$('phase-end').classList.add('current');}
+      if(trial&&trial.incomplete){const result=trial.environment_result;if(result&&typeof result.success==='boolean')addState('Environment result before interruption',(result.success?'Success':'No success')+(typeof result.score==='number'?' · score '+result.score:''));outcome.classList.add('unknown');outcome.append(node('strong','',partialInterrupted(run,trial)?'Trial interrupted':'Trial in progress'));outcome.appendChild(node('small','', 'No finalized outcome.'+(trial.error&&trial.error.type?' Error: '+trial.error.type:'')));$('phase-end').textContent='Incomplete';$('phase-end').classList.add('current');}
+      else if(trial){const success=trial.success;outcome.classList.toggle('fail',success===false);outcome.classList.toggle('unknown',typeof success!=='boolean');outcome.append(node('strong','',success===true?'Recorded outcome: task success':success===false?'Recorded outcome: no task success':'Trial outcome not recorded'));outcome.appendChild(node('small','',trial.close_reason?'Recorded end reason: '+trial.close_reason:'End reason not recorded.'));if(typeof success==='boolean'||trial.close_reason)$('phase-end').classList.add('current');}
       return;
     }
-    const frame=currentFrame();const isFinal=state.after&&state.step===trial.frames.length-1;
+    const frame=currentFrame();if(isPending(frame))state.after=false;const isFinal=state.after&&state.step===trial.frames.length-1;
     const rejected=isRejected(frame);const hasRejections=trial.frames.some(isRejected);
-    $('before').disabled=false;$('after').disabled=false;$('play').disabled=false;$('progress').disabled=false;
-    $('before').textContent=rejected?'Before response':'Before action';$('after').textContent=rejected?'After rejection':'After action';
+    $('before').disabled=false;$('after').disabled=isPending(frame);$('play').disabled=false;$('progress').disabled=false;
+    $('before').textContent=rejected?'Before response':'Before action';$('after').textContent=isPending(frame)?'Feedback missing':rejected?'After rejection':'After action';
     $('position-label').textContent='Trial '+trial.trial_number+' · '+(hasRejections?'Event ':'Action ')+(state.step+1)+' of '+trial.frames.length;
     $('action-heading').textContent=rejected?'Rejected actor response':'Selected action';$('feedback-heading').textContent=rejected?'Response rejection':'Environment feedback';
     $('phase-act').textContent=rejected?'Response':'Act';$('phase-feedback').textContent=rejected?'Rejected':'Feedback';
-    renderObservation(frame);$('action-code').textContent=rejected?recorded(frame.raw_response):frame.action||'Not recorded';$('step-kind').textContent=rejected?'Rejected actor response · no environment action':'Executed environment action';$('feedback-text').textContent=rejected?(state.after?'Environment not executed. Action budget charged: 1. Observation unchanged.\nReason: '+recorded(frame.reason):'This response was rejected before environment execution. Select “After rejection” to inspect the recorded reason and budget charge.'):(state.after?recorded(frame.after_observation):'Select “After action” to inspect the recorded environment feedback.');
-    renderMemory(trial,isFinal);renderEvaluation(run,trial,frame,isFinal);
+    renderObservation(frame);$('action-code').textContent=rejected?recorded(frame.raw_response):frame.action||'Not recorded';$('step-kind').textContent=isPending(frame)?'Selected action · feedback missing':rejected?'Rejected actor response · no environment action':'Executed environment action';$('feedback-text').textContent=isPending(frame)?'Environment feedback was not recorded. Environment execution and result are unconfirmed; no after-action image is available.':rejected?(state.after?'Environment not executed. Action budget charged: 1. Observation unchanged.\nReason: '+recorded(frame.reason):'This response was rejected before environment execution. Select “After rejection” to inspect the recorded reason and budget charge.'):(state.after?recorded(frame.after_observation):'Select “After action” to inspect the recorded environment feedback.');
+    renderMemory(trial,isFinal&&!trial.incomplete);renderEvaluation(run,trial,frame,isFinal);
     const all=positions(),index=positionIndex(all);$('previous').disabled=index<=0;$('next').disabled=index>=all.length-1;$('progress').max=String(Math.max(0,all.length-1));$('progress').value=String(Math.max(0,index));$('progress').setAttribute('aria-valuetext','Trial '+trial.trial_number+', event '+(state.step+1)+', '+(state.after?'after':'before')+(rejected?' response rejection':' action execution'));$('progress-label').textContent=(index+1)+' / '+all.length;
     $('play').textContent=state.playing?'Pause':'Play';
   }

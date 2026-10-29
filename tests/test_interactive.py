@@ -271,6 +271,7 @@ class InteractiveRunnerTests(unittest.TestCase):
         self.assertTrue(all(value["max_environment_steps"] == 1 for value in params_seen))
         self.assertEqual(rows[0]["task"], "interactive-fixture")
         self.assertEqual(json.loads((Path(self.temp.name) / "reference/episodes.json").read_text()), rows)
+        self.assertTrue(all("in_progress_trial" not in row for row in rows))
         self.assertIn("policy_ao_trace", rows[0]["trials"][0]["policy_trajectory"])
 
     def test_empty_replies_exhaust_each_trial_without_failing_the_runtime(self):
@@ -292,12 +293,85 @@ class InteractiveRunnerTests(unittest.TestCase):
 
     def test_close_on_native_error_without_false_completed_case(self):
         from vrlbench.runtime import llm
-        session = FakeSession()
-        session.step = lambda action: (_ for _ in ()).throw(ConnectionError("native failure"))
-        with patch.object(llm, "complete", return_value="look"), self.assertRaises(ConnectionError):
+
+        self.spec["benchmark"]["cases"] = [{"case_id": "a"}]
+        self.spec["max_environment_steps"] = 2
+        session = FakeSession(image=PNG)
+        checkpoint = Path(self.temp.name) / "reference/episodes.json"
+        calls = []
+
+        def complete(prompt, **kwargs):
+            calls.append(prompt)
+            if len(calls) == 1:
+                return ""
+            invalid = json.loads(checkpoint.read_text())[0]["in_progress_trial"]
+            self.assertEqual(invalid["phase"], "invalid_action")
+            self.assertEqual(invalid["trial_metadata"]["action_attempts"], 1)
+            self.assertEqual(invalid["trial_metadata"]["environment_steps"], 0)
+            return "look"
+
+        def lose_feedback(action):
+            pending = json.loads(checkpoint.read_text())[0]["in_progress_trial"]
+            self.assertEqual(pending["phase"], "awaiting_environment_feedback")
+            self.assertEqual(pending["pending_action"]["action"], "look")
+            raise ConnectionError("native failure")
+
+        session.step = lose_feedback
+        with patch.object(llm, "complete", side_effect=complete), self.assertRaisesRegex(ConnectionError, "native failure"):
             run_cases(self.spec, self.runtime, lambda case, params: session)
         self.assertTrue(session.closed)
-        self.assertFalse((Path(self.temp.name) / "reference/episodes.json").exists())
+        record = json.loads(checkpoint.read_text())[0]
+        self.assertEqual(record["trials"], [])
+        partial = record["in_progress_trial"]
+        self.assertEqual((partial["trial"], partial["status"]), (0, "interrupted"))
+        self.assertIsNone(partial["success"])
+        self.assertIsNone(partial["environment_result"])
+        self.assertEqual(partial["error"], {"type": "ConnectionError"})
+        self.assertEqual(partial["system_context"], "")
+        self.assertEqual(partial["user_context"], "")
+        self.assertEqual(partial["policy_evidence"]["steps"], [])
+        self.assertEqual(len(partial["trial_metadata"]["screenshots"]), 1)
+        self.assertEqual(partial["pending_action"]["budget_used_before"], 1)
+        self.assertEqual(partial["pending_action"]["environment_steps_before"], 0)
+        self.assertNotIn("after_observation", partial["pending_action"])
+
+    def test_writer_failure_keeps_the_completed_environment_trial_uncommitted(self):
+        from vrlbench.runtime import llm, loop
+        from vrlbench.runtime.er.base import ERSlot
+
+        class FailingWriter(ERSlot):
+            def reset(self):
+                pass
+
+            def on_failure(self, trajectory, model):
+                raise RuntimeError("fixture writer failed")
+
+            def build_section(self):
+                return ""
+
+        class Runtime:
+            model = "offline"
+
+            def run_episode(inner_self, actor, manager, *, metadata, on_trial=None):
+                return loop.run_episode(actor, manager, FailingWriter(), "offline",
+                                        total_trials=2, metadata=metadata, on_trial=on_trial)
+
+        self.spec["benchmark"]["cases"] = [{"case_id": "a"}]
+        session = FakeSession(done=True, image=PNG)
+        session.evaluation_score = 0.0
+        with patch.object(llm, "complete", return_value="look"), self.assertRaisesRegex(RuntimeError, "fixture writer failed"):
+            run_cases(self.spec, Runtime(), lambda case, params: session)
+        record = json.loads((Path(self.temp.name) / "reference/episodes.json").read_text())[0]
+        self.assertEqual(record["trials"], [])
+        partial = record["in_progress_trial"]
+        self.assertEqual((partial["status"], partial["phase"]), ("interrupted", "environment_complete"))
+        self.assertIsNone(partial["success"])
+        self.assertIsNone(partial["pending_action"])
+        self.assertEqual(partial["environment_result"], {"success": False, "score": 0.0})
+        self.assertEqual(partial["error"], {"type": "RuntimeError"})
+        self.assertEqual(partial["policy_evidence"]["steps"][0]["action"], "look")
+        self.assertEqual(partial["trial_metadata"]["environment_steps"], 1)
+        self.assertTrue(session.closed)
 
     def test_shared_source_rejected_before_environment_creation(self):
         self.spec["shared_t1_dir"] = "/unused"
@@ -325,7 +399,9 @@ class InteractiveRunnerTests(unittest.TestCase):
         with patch.object(llm, "complete", return_value="look"), self.assertRaises(ConnectionError):
             run_cases(self.spec, self.runtime, factory)
         rows = json.loads((Path(self.temp.name) / "reference/episodes.json").read_text())
-        self.assertEqual([row["case_id"] for row in rows], ["a"])
+        self.assertEqual([row["case_id"] for row in rows], ["a", "b"])
+        self.assertEqual(rows[1]["trials"], [])
+        self.assertEqual(rows[1]["in_progress_trial"]["status"], "interrupted")
         self.assertTrue(all(session.closed for session in sessions))
 
     def test_interrupted_case_retains_completed_trials_and_delivered_gate_context(self):
@@ -363,7 +439,9 @@ class InteractiveRunnerTests(unittest.TestCase):
         replay = replay_data([output])["runs"][0]
         self.assertEqual(replay["status"], "failed")
         trials = replay["cases"][0]["trials"]
-        self.assertEqual(len(trials), 2)
+        self.assertEqual(len(trials), 3)
+        self.assertIsNone(trials[2]["success"])
+        self.assertEqual(trials[2]["status"], "interrupted")
         self.assertEqual(trials[1]["memory"]["system_context"], "")
         self.assertIn("look", trials[1]["metadata"]["replay_gate"]["prepared_system_context"])
         self.assertEqual(trials[1]["frames"][0]["action"], "look")

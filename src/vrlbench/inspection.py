@@ -64,9 +64,30 @@ def inspect_case(result: SimulationResult, case_id: str | None = None) -> dict[s
             raise ValueError("a recorded trial outcome must be boolean or unknown")
         trials.append({"trial_number": trial + 1,
                        **{field: deepcopy(row.get(field)) for field in TRIAL_FIELDS}})
+    partial = case.get("in_progress_trial")
+    if partial is not None:
+        budget = view["trial_budget"]
+        if (not isinstance(partial, dict) or type(partial.get("trial")) is not int
+                or partial["trial"] != len(rows) or type(budget) is not int
+                or not 0 <= partial["trial"] < budget
+                or (rows and rows[-1].get("success") is True)):
+            raise ValueError("an in-progress trial must follow completed trials within the trial budget")
+        if ("success" not in partial or partial["success"] is not None
+                or partial.get("status") not in {"in_progress", "interrupted"}
+                or partial.get("phase") not in {"reset", "invalid_action",
+                    "awaiting_environment_feedback", "environment_feedback", "environment_complete"}):
+            raise ValueError("an in-progress trial cannot claim a finalized outcome")
+        if (not isinstance(partial.get("trial_metadata"), dict)
+                or not isinstance(partial.get("actor_trajectory"), str)
+                or any(partial.get(key) is not None and not isinstance(partial[key], str)
+                       for key in ("context", "system_context", "user_context"))):
+            raise ValueError("in-progress memory and action records are malformed")
+        partial = {"trial_number": partial["trial"] + 1, **deepcopy(partial)}
     view["case"] = {"case_id": case_id, "task": case.get("task"),
                     "resource_usage": deepcopy(case.get("resource_usage")),
                     "trials": trials}
+    if partial is not None:
+        view["case"]["in_progress_trial"] = partial
     return view
 
 
@@ -84,11 +105,19 @@ def render_inspection(view: dict[str, Any]) -> str:
         return "\n".join(lines)
     case = view["case"]
     lines.append(f"\nCase: {case['case_id']}  Task: {case.get('task')}")
-    for row in case["trials"]:
+    partial = case.get("in_progress_trial")
+    for row in [*case["trials"], *([partial] if partial is not None else [])]:
         outcome = {True: "SUCCESS", False: "FAIL"}.get(row["success"], "UNKNOWN")
+        if row is partial:
+            interrupted = (row["status"] == "interrupted"
+                           or view["status"] in {"failed", "timeout", "timed_out", "cancelled"})
+            outcome = ("INCOMPLETE (" + ("interrupted; " if interrupted else "")
+                       + "last saved checkpoint: " + row["status"] + ")")
         lines.append(f"\n=== Trial {row['trial_number']} / {view['trial_budget']}: {outcome} ===")
-        for field in TRIAL_FIELDS[2:]:
-            value = row[field]
+        fields = TRIAL_FIELDS[2:] + (("phase", "pending_action", "environment_result", "error")
+                                    if row is partial else ())
+        for field in fields:
+            value = row.get(field)
             shown = ("[unknown / not recorded]" if value is None else "[empty]" if value == ""
                      else value if isinstance(value, str)
                      else json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
