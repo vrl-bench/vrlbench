@@ -43,7 +43,7 @@ context without interpreting or repairing its policy decisions.
    conditions, and compare it with Retry or another system.
 
 The [trial-loop diagram](assets/memory-research.svg) expands steps 3–4.
-MiniWoB, WebShop, and WebArena use the common trial loop.
+MiniWoB, WebShop, WebArena, and OSWorld use the common trial loop.
 Custom workloads use the same runtime through `runtime.run_episode(...)`.
 
 By default, a case has six trials; each native MiniWoB trial has an action
@@ -52,7 +52,8 @@ these defaults and retain their resolved values in the saved results.
 
 `trials` limits the number of complete attempts at a case;
 `max_environment_steps` sets the action budget within each
-trial. Each native environment action consumes one unit. A response with no
+trial. Each native environment action consumes one unit. In OSWorld, one
+pyautogui code block is one native action. A response with no
 valid action also consumes one unit: the adapter records the rejected response,
 returns parser feedback without changing the environment, and continues while
 budget remains. Actual environment steps and rejected responses are counted
@@ -65,8 +66,9 @@ service failures propagate as execution errors, not task failures.
 | Workload | Reset and outcome semantics | Setup |
 |---|---|---|
 | WebArena | Restore website data through a required reset callback, then reset the browser; use the official task evaluator | [WebArena](QUICKSTART.md#use-webarena) |
+| OSWorld | Restore the VM snapshot and task configuration; use native `evaluate()` for success | [OSWorld](QUICKSTART.md#use-osworld) |
 
-The WebArena adapter currently executes independent first
+The two additional online adapters currently execute independent first
 trials, rather than importing a shared T1. Keep cases, initial-state restoration,
 models, and budgets identical when comparing memory methods.
 
@@ -92,6 +94,7 @@ self-contained, per-action browser viewer without rerunning models or tasks.
 Native page capture is enabled explicitly with
 `workload.params.capture_observations: true`; otherwise the viewer uses saved
 observation text. Capture does not affect actor inputs, budgets, or scoring.
+OSWorld saves the screenshots already supplied to its vision actor.
 See the [walkthrough](QUICKSTART.md#inspect-and-compare) for recording and export.
 
 SDK-managed model requests also write `provider_requests.jsonl` as each call
@@ -118,7 +121,7 @@ state remains unknown; the simulator does not generate agent-thinking explanatio
 | Censored AvgT@T | Mean first-success trial, counting unsolved cases as T+1 |
 | Steps, model calls | Recorded interaction and inference use |
 
-WebArena also retains the native evaluator's `environment_score`
+WebArena and OSWorld also retain the native evaluator's `environment_score`
 in trial metadata. A score of 1 counts as complete task success; partial native
 scores remain available for inspection rather than being discarded.
 

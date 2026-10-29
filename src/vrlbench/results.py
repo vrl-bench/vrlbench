@@ -389,13 +389,17 @@ def _environment_identity_check(payloads: Sequence[Mapping[str, Any]], context: 
     digests, missing = set(), []
     benchmark = context["benchmark"]
     if (isinstance(benchmark, Mapping) and benchmark.get("factory") is None
-            and benchmark.get("name") == "webarena"):
+            and benchmark.get("name") in {"webarena", "osworld"}):
         identities, missing = [], []
 
         def sha256(value: Any) -> bool:
             return (isinstance(value, str) and len(value) == 64
                     and all(char in "0123456789abcdefABCDEF" for char in value))
 
+        hash_fields = (("config_sha256", "reset_source_sha256") if benchmark["name"] == "webarena"
+                       else ("config_sha256",))
+        text_fields = (("judge_model",) if benchmark["name"] == "webarena"
+                       else ("snapshot_name", "provider_name"))
         for index, payload in enumerate(payloads):
             rows = payload.get("cases", [])
             identity = {row["case_id"]: row.get("source_identity") for row in rows}
@@ -403,10 +407,8 @@ def _environment_identity_check(payloads: Sequence[Mapping[str, Any]], context: 
                 missing.append(index)
             else:
                 identities.append(json.dumps(identity, sort_keys=True, allow_nan=False))
-                if any(not sha256(value.get("config_sha256"))
-                       or not sha256(value.get("reset_source_sha256"))
-                       or not isinstance(value.get("judge_model"), str)
-                       or not value["judge_model"].strip()
+                if any(any(not sha256(value.get(field)) for field in hash_fields)
+                       or any(not isinstance(value.get(field), str) or not value[field].strip() for field in text_fields)
                        for value in identity.values()):
                     missing.append(index)
         if len(set(identities)) > 1:

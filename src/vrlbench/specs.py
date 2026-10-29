@@ -248,8 +248,12 @@ class SimulationSpec:
         if self.replay_gate is not None and self.replay_gate.factory is not None:
             value["replay_gate"]["factory"] = asdict(self.replay_gate.factory.resolved(root))
         value["output_dir"] = str((root / self.output_dir).resolve())
-        if self.workload.factory is None and self.workload.name == "webarena":
+        if self.workload.factory is None and self.workload.name in {"webarena", "osworld"}:
             params = value["benchmark"]["params"]
+            if self.workload.name == "osworld" and isinstance(params.get("env_kwargs"), dict):
+                vm = params["env_kwargs"].get("path_to_vm")
+                if isinstance(vm, str):
+                    params["env_kwargs"]["path_to_vm"] = str((root / Path(vm).expanduser()).resolve())
             if isinstance(params.get("reset_factory"), dict):
                 params["reset_factory"] = asdict(_construct(FactorySpec, params["reset_factory"]).resolved(root))
             for case in value["benchmark"]["cases"]:
@@ -306,7 +310,7 @@ class SimulationSpec:
             raise ValueError("custom memory requires a factory or method_factory")
         if custom_factory is not None and is_reserved_memory_name(self.memory.name):
             raise ValueError("custom factories cannot override a reference method name")
-        if self.workload.factory is None and self.workload.name not in {"demo", "miniwob", "webshop", "webarena"}:
+        if self.workload.factory is None and self.workload.name not in {"demo", "miniwob", "webshop", "webarena", "osworld"}:
             raise ValueError("a new workload requires a factory")
         if not isinstance(self.workload.cases, list) or not self.workload.cases:
             raise ValueError("workload.cases must explicitly select at least one case")
@@ -315,7 +319,8 @@ class SimulationSpec:
             allowed_params = {"webshop": {"max_actor_steps", "capture_observations"},
                               "miniwob": {"headless", "trial_seed_mode", "capture_observations"},
                               "demo": {"success_after"},
-                              "webarena": {"observation_type", "headless", "reset_factory", "capture_observations", "judge_model"}}[self.workload.name]
+                              "webarena": {"observation_type", "headless", "reset_factory", "capture_observations", "judge_model"},
+                              "osworld": {"env_kwargs", "pause"}}[self.workload.name]
             unknown = set(self.workload.params) - allowed_params
             if unknown:
                 raise ValueError(f"unknown {self.workload.name} params: {sorted(unknown)}")
@@ -333,7 +338,7 @@ class SimulationSpec:
                     raise ValueError("accounted reference comparisons require shared_t1_dir from a completed Retry run")
                 if self.memory.name == "retry" and self.shared_t1_dir is not None:
                     raise ValueError("a Retry source run must not consume another shared first trial")
-            if self.workload.name == "webarena":
+            if self.workload.name in {"webarena", "osworld"}:
                 self._validate_interactive_workload()
         identities = []
         for case in self.workload.cases:
@@ -363,14 +368,29 @@ class SimulationSpec:
         name, params = self.workload.name, self.workload.params
         if self.shared_t1_dir is not None:
             raise ValueError(f"{name} does not yet import shared first trials; run independent trials with matched budgets")
-        if "judge_model" in params and (not isinstance(params["judge_model"], str) or not params["judge_model"].strip()):
-            raise ValueError("WebArena judge_model must be a nonempty model name")
-        reset = params.get("reset_factory")
-        if not isinstance(reset, dict):
-            raise ValueError("WebArena requires reset_factory to restore the website backends before each trial")
-        _construct(FactorySpec, reset).validate()
-        if params.get("observation_type", "accessibility_tree") not in {"accessibility_tree", "html"}:
-            raise ValueError("WebArena supports text observations: accessibility_tree or html")
+        if name == "webarena":
+            if "judge_model" in params and (not isinstance(params["judge_model"], str) or not params["judge_model"].strip()):
+                raise ValueError("WebArena judge_model must be a nonempty model name")
+            reset = params.get("reset_factory")
+            if not isinstance(reset, dict):
+                raise ValueError("WebArena requires reset_factory to restore the website backends before each trial")
+            _construct(FactorySpec, reset).validate()
+            if params.get("observation_type", "accessibility_tree") not in {"accessibility_tree", "html"}:
+                raise ValueError("WebArena supports text observations: accessibility_tree or html")
+        if name == "osworld":
+            kwargs = _json_object(params.get("env_kwargs", {}), "OSWorld env_kwargs")
+            if not isinstance(kwargs.get("path_to_vm"), str) or not kwargs["path_to_vm"].strip():
+                raise ValueError("OSWorld requires env_kwargs.path_to_vm pointing to a provisioned VM; the adapter does not download images")
+            if kwargs.get("action_space", "pyautogui") != "pyautogui":
+                raise ValueError("OSWorld adapter uses action_space=pyautogui")
+            snapshot = kwargs.get("snapshot_name", "init_state")
+            if not isinstance(snapshot, str) or not snapshot.strip():
+                raise ValueError("OSWorld requires a nonempty reset snapshot")
+            pause = params.get("pause", 2.0)
+            if isinstance(pause, bool) or not isinstance(pause, (int, float)) or not math.isfinite(pause) or pause < 0:
+                raise ValueError("OSWorld pause must be finite and nonnegative")
+            if self.max_total_tokens is not None:
+                raise ValueError("OSWorld screenshot requests do not support a strict max_total_tokens ceiling")
         seen = set()
         for case in self.workload.cases:
             if (not isinstance(case, dict) or set(case) != {"case_id", "config_file"}

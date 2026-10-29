@@ -72,6 +72,7 @@ VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。
 | MiniWoB | 浏览器与界面操作 | [Python 3.12 + Chromium](docs/QUICKSTART.md#use-miniwob) · [示例配置](examples/configs/miniwob_retry.json) |
 | WebShop | 交互式购物 | [Python 3.10 + Java 11](docs/QUICKSTART.md#webshop-setup) · [示例配置](examples/configs/webshop_retry.json) |
 | WebArena | 自部署网站上的操作任务 | [网站与浏览器环境](docs/QUICKSTART.md#use-webarena) · [示例配置](examples/configs/webarena_retry.json) |
+| OSWorld | 可重置虚拟机中的桌面任务 | [虚拟机与视觉模型](docs/QUICKSTART.md#use-osworld) · [示例配置](examples/configs/osworld_retry.json) |
 | 自己的任务 | 自有智能体与环境 | [接入任务适配器](docs/DEVELOPMENT.md#add-a-task-environment) |
 
 克隆仓库：

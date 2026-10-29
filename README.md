@@ -110,6 +110,7 @@ Select a workload, configure the model and memory method, then use the same
 | MiniWoB | Browser and UI interaction | [Python 3.12 + Chromium](docs/QUICKSTART.md#use-miniwob) · [Example config](examples/configs/miniwob_retry.json) |
 | WebShop | Interactive shopping | [Python 3.10 + Java 11](docs/QUICKSTART.md#webshop-setup) · [Example config](examples/configs/webshop_retry.json) |
 | WebArena | Self-hosted web tasks | [Website and browser setup](docs/QUICKSTART.md#use-webarena) · [Example config](examples/configs/webarena_retry.json) |
+| OSWorld | Desktop tasks in a resettable VM | [VM and vision-model setup](docs/QUICKSTART.md#use-osworld) · [Example config](examples/configs/osworld_retry.json) |
 | Your tasks | Your agent and environment | [Connect a workload adapter](docs/DEVELOPMENT.md#add-a-task-environment) |
 
 Clone the repository:

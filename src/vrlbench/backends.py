@@ -598,4 +598,7 @@ def run_backend(spec: Mapping[str, Any], er_name: str, controller: str) -> tuple
     if benchmark["name"] == "webarena":
         from .environments.webarena import run
         return run(spec, BackendRuntime(spec, er_name, controller)), []
+    if benchmark["name"] == "osworld":
+        from .environments.osworld import run
+        return run(spec, BackendRuntime(spec, er_name, controller)), []
     return run_reference(spec, er_name, controller), []

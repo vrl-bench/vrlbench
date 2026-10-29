@@ -6,6 +6,7 @@ _REGISTRY = {
     "miniwob": "vrlbench.environments.miniwob",
     "webshop": "vrlbench.environments.webshop",
     "webarena": "vrlbench.environments.webarena",
+    "osworld": "vrlbench.environments.osworld",
 }
 
 

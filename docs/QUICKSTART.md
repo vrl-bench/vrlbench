@@ -10,6 +10,7 @@ Choose an interactive environment, model, and memory system, then use one workfl
 - **[WebShop](#webshop-setup):** interactive shopping, using the
   [WebShop configuration](../examples/configs/webshop_retry.json).
 - **[WebArena](#use-webarena):** tasks on self-hosted websites.
+- **[OSWorld](#use-osworld):** desktop tasks in a resettable VM.
 - **[Your tasks](DEVELOPMENT.md#add-a-task-environment):** connect a workload
   adapter while retaining the same memory and analysis interfaces.
 
@@ -321,7 +322,7 @@ For memory comparisons, use the same model, tasks, and budgets, then set
 
 ## Additional workloads
 
-WebArena uses the same multi-trial memory lifecycle,
+WebArena and OSWorld use the same multi-trial memory lifecycle,
 interaction accounting, inspection, and online metrics. Prepare each native
 environment in its own Python environment, then install `vrlbench[runtime]`
 there. Their dependencies and task assets are not installed by the SDK.
@@ -333,7 +334,7 @@ your local selection. Paths resolve from the configuration file's directory.
 Run `--plan` to check the declaration without starting an environment or model.
 For memory comparisons, copy a Retry configuration, change `memory` and
 `output_dir`, and keep the model, cases, reset rules, and budgets fixed.
-This adapter executes independent first trials and does not import
+These two adapters execute independent first trials and do not import
 `shared_t1_dir`. Reflexion uses a domain-neutral writer adaptation here;
 the existing MiniWoB and WebShop prompt routes are unchanged.
 An empty or syntactically invalid response consumes one action opportunity
@@ -400,6 +401,48 @@ per-action replay without changing the text actor's input.
 vrlbench simulate --config examples/configs/webarena_retry.json --plan
 vrlbench simulate --config examples/configs/webarena_retry.json
 vrlbench inspect runs/webarena_retry
+```
+
+### Use OSWorld
+
+Prepare the native `desktop_env` package, a local VM, a clean snapshot, and task
+files following the [OSWorld setup](https://github.com/xlang-ai/OSWorld).
+The adapter's checked API is upstream revision
+[`044bc339`](https://github.com/xlang-ai/OSWorld/tree/044bc33901cb893808e3f91ebc9a17ed8e54b44c).
+Use its source checkout and official environment setup, then install
+`vrlbench[runtime]` in that environment. The PyPI `desktop-env==1.0.2` package
+lacks `get_file(strict=True)` and is rejected before a VM starts.
+The adapter does not download VM images.
+
+In [`osworld_retry.json`](../examples/configs/osworld_retry.json), set the task
+config paths and `params.env_kwargs.path_to_vm`. Other `env_kwargs` are passed
+to `DesktopEnv`, including `provider_name` and `snapshot_name`. Use a
+vision-capable model: the current screenshot is sent with the task text and
+visible accessibility or terminal output. Actions execute through the native
+`pyautogui` interface inside the VM, not on the host.
+Each observation includes the current PNG's native dimensions. Actions use
+absolute pixels from the top-left origin; the adapter does not resize the image
+or rescale the actor's coordinates.
+Each response is one self-contained Python program (bare or in one closed code
+block), or a standalone `DONE`, `FAIL`, or `WAIT`. A program mixed with a control
+marker is rejected before execution, rather than partially executed.
+The example enables accessibility text so verbal memory can retain observed
+state changes; the actor also receives the current screenshot. Memory writers
+receive the recorded text trace, not the screenshot bytes.
+
+Every trial calls `DesktopEnv.reset(task_config=...)` to restore the snapshot
+and task setup. The native `evaluate()` result determines success; `DONE`,
+`FAIL`, or a terminal flag alone does not. Provider usage is recorded, but a
+strict `max_total_tokens` ceiling is not supported for screenshot requests.
+Set trial/step limits and a run timeout explicitly.
+For a Docker deployment, explicitly check writable VM storage and host port
+bindings; the native provider's defaults do not confine both to your task
+directory and loopback interface.
+
+```bash
+vrlbench simulate --config examples/configs/osworld_retry.json --plan
+vrlbench simulate --config examples/configs/osworld_retry.json
+vrlbench inspect runs/osworld_retry
 ```
 
 <a id="3-inspect-memory-and-task-behavior"></a>

@@ -1,0 +1,17 @@
+{
+  "workload": {
+    "name": "osworld",
+    "cases": [{"case_id": "desktop-0", "config_file": "../../external/OSWorld/evaluation_examples/examples/YOUR_DOMAIN/YOUR_TASK.json"}],
+    "params": {
+      "env_kwargs": {"provider_name": "vmware", "path_to_vm": "../../external/OSWorld/vmware_vm_data/Ubuntu/Ubuntu.vmx", "snapshot_name": "init_state", "action_space": "pyautogui", "require_a11y_tree": true, "headless": true},
+      "pause": 2.0
+    }
+  },
+  "memory": {"name": "retry"},
+  "model": {"name": "YOUR_VISION_MODEL_NAME", "api_key_env": "OPENAI_API_KEY", "request_options": {}},
+  "trials": 6,
+  "max_environment_steps": 30,
+  "require_provider_usage": true,
+  "timeout_seconds": 3600,
+  "output_dir": "../../runs/osworld_retry"
+}
