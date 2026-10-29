@@ -12,7 +12,7 @@ _VISIBILITY_WINDOW = None
 _VISIBILITY_PROTOCOL = 'all_failure_reflections'
 _UPSTREAM_REFLECTION_MAX_TOKENS = 256
 _EVALUATION_REFLECTION_MAX_TOKENS = _UPSTREAM_REFLECTION_MAX_TOKENS
-_SUPPORTED_BENCHMARKS = frozenset({'miniwob', 'webshop'})
+_SUPPORTED_BENCHMARKS = frozenset({'miniwob', 'webshop', 'webarena', 'osworld'})
 _PROMPT_DIR = Path(__file__).resolve().parent / 'source_prompts'
 _PROMPT_ARTIFACTS: Mapping[str, tuple[str, str]] = {'miniwob_writer': ('reflexion_miniwob_writer.txt', '6445984018bb794c35d004138e488e11c89c37c2bf2a12e48924ddc68d3cd5b8'), 'webshop_writer': ('reflexion_webshop_writer.txt', '495f3492da8216d3a4ef14ee81945924a967ef266b99b2e00dc3e7e50a6152f2'), 'webshop_few_shot': ('reflexion_webshop_few_shot.txt', 'c0bd69af24fecc4d0b30f92e58af1e4f86320eb227b7002584bb04a88e913621')}
 _UPSTREAM_ARTIFACTS: Mapping[str, str] = {'webshop_runs/generate_reflections.py': 'a01282c0e9079881e101aefbc249c540a8205d85817f1ca68b7d85e36a72498a', 'webshop_runs/reflection_few_shot_examples.txt': 'c0bd69af24fecc4d0b30f92e58af1e4f86320eb227b7002584bb04a88e913621', 'webshop_runs/env_history.py': '33c97e83ab70b713de1e85c9fb87395e5c71366c31ed2a53081dcab49f0e852b', 'alfworld_runs/generate_reflections.py': 'd7fbe4af7ff21ce9bc73ad2bcf16bf265682d1fb3554dc62985f3ada09997ef7', 'alfworld_runs/reflexion_few_shot_examples.txt': '5040995a3cdc88bce30fa26bec3ca4875ced8db98b7b2859f5c1614deec716e7', 'alfworld_runs/env_history.py': 'b41ee4eacbdb6f98b136f88ae2051de4bb65b583742c952ff100230090c87d0e'}
@@ -59,7 +59,7 @@ def _source_interaction_log(benchmark: str, trajectory: str, *, actor_trajectory
         if not source_log:
             raise ValueError('MiniWoB Reflexion writer requires the source-native Actor decision-block trajectory')
         return f'{source_log}\n\nSTATUS: FAIL'
-    elif benchmark == 'webshop':
+    elif benchmark in {'webshop', 'webarena', 'osworld'}:
         lines = [evidence['task'], 'Observation:', evidence['initial_observation']]
     else:
         raise AssertionError(f'unrouted Reflexion benchmark: {benchmark}')
@@ -76,6 +76,12 @@ def _writer_prompt(benchmark: str, source_log: str, entries: Sequence[str]) -> s
     elif benchmark == 'miniwob':
         template = _load_prompt_artifact('miniwob_writer')
         scenario = source_log
+    elif benchmark in {'webarena', 'osworld'}:
+        # A domain-neutral adaptation, not an upstream benchmark prompt.
+        return ('The following trial failed. Reflect briefly on the executed actions and '
+                'observed feedback, and write a concrete plan for the next attempt at the '
+                'same task. Do not assume unobserved states or a hidden solution.\n\n'
+                + source_log + _memory_block(entries, writer=True) + '\n\nReflection:')
     else:
         raise AssertionError(f'unrouted Reflexion benchmark: {benchmark}')
     prompt = template.replace('[[TRAJECTORY]]', scenario).replace('[[MEMORY_BLOCK]]', _memory_block(entries, writer=True))
@@ -89,7 +95,7 @@ def _reflection_text(raw: str) -> str:
     return str(raw or '').strip()
 
 class Reflexion(ERSlot):
-    """Reflexion memory controller for the shared MiniWoB/WebShop leaderboard."""
+    """Failure reflection with native or explicitly adapted writer prompts."""
 
     def __init__(self) -> None:
         self._entries = []
@@ -103,7 +109,7 @@ class Reflexion(ERSlot):
         return benchmark
 
     def on_failure(self, trajectory: str, model: str) -> None:
-        raise ValueError("Reflexion requires on_trial_end(..., metadata={'benchmark': 'miniwob'|'webshop'}) so prompt routing is explicit.")
+        raise ValueError("Reflexion requires on_trial_end(..., metadata={'benchmark': workload_name}) so prompt routing is explicit.")
 
     def on_trial_end(self, trajectory: str, *, actor_trajectory: str | None=None, success: bool, model: str, trial_index: int, total_trials: int, metadata: dict[str, Any] | None=None) -> None:
         benchmark = self._bind_benchmark(metadata)

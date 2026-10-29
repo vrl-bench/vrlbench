@@ -296,7 +296,8 @@ class BackendRuntime:
 
         return make_controller(self.controller, allow_gold_feedback=False, model=self.model)
 
-    def run_episode(self, actor: Any, manager: Any, *, metadata: Mapping[str, Any] | None = None) -> Any:
+    def run_episode(self, actor: Any, manager: Any, *, metadata: Mapping[str, Any] | None = None,
+                    on_trial: Callable[[Any], None] | None = None) -> Any:
         from vrlbench.runtime.loop import run_episode
 
         loop_metadata = {"benchmark": self.spec["benchmark"]["name"], **dict(metadata or {})}
@@ -307,7 +308,8 @@ class BackendRuntime:
                            controller=controller, model=self.model,
                            total_trials=self.trials, metadata=loop_metadata,
                            max_total_tokens=self.spec.get("max_total_tokens"),
-                           require_provider_usage=bool(self.spec.get("require_provider_usage", False)))
+                           require_provider_usage=bool(self.spec.get("require_provider_usage", False)),
+                           on_trial=on_trial)
 
     def run_reference(self) -> list[dict[str, Any]]:
         """Execute an original MiniWoB/WebShop runner with these bindings."""
@@ -405,6 +407,9 @@ def _case_rows(path: Path, *, task: str | None = None) -> list[dict[str, Any]]:
         raise TypeError(f"Expected a list of cases at {path}")
     converted = []
     for row in rows:
+        if "case_id" in row:
+            converted.append(dict(row))
+            continue
         converted.append({
             "case_id": str(row.get("name", row.get("sample_index", row.get("episode", "")))),
             "task": str(task or row.get("task") or "webshop"),

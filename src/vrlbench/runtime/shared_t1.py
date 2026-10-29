@@ -22,7 +22,7 @@ def validate_formal_trial_environment_accounting(
     if horizon <= 0:
         raise ValueError("shared T1 environment horizon must be positive")
     benchmark = benchmark.strip().lower()
-    if benchmark not in {"miniwob", "webshop"}:
+    if benchmark not in {"miniwob", "webshop", "webarena", "osworld"}:
         raise ValueError(f"unsupported shared T1 benchmark: {benchmark}")
 
     def integer(field: str) -> int:
@@ -96,6 +96,12 @@ def validate_formal_trial_environment_accounting(
         "environment_terminal_failure": (False, True, False, False, True),
         "ao_horizon": (False, False, True, False, True),
     }
+    if benchmark in {"webarena", "osworld"}:
+        states["environment_truncated"] = (False, False, True, False, True)
+        if budget_unit == ACTION_ATTEMPT_BUDGET_UNIT:
+            # Empty replies can exhaust the budget without any native action.
+            # Keep that valid trial, but do not invent a failure trace for memory.
+            states["ao_horizon"] = (False, False, True, False, steps > 0)
     if budget_unit == AO_BUDGET_UNIT:
         states["actor_protocol_failure"] = (False, False, False, True, steps > 0)
         if benchmark == "miniwob":

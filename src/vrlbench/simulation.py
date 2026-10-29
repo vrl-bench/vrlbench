@@ -109,11 +109,16 @@ def _available_checkpoints(output: Path) -> list[dict[str, Any]]:
             for row in rows:
                 if not isinstance(row, dict) or not isinstance(row.get("trials"), list):
                     continue
-                identity = row.get("name", row.get("sample_index", row.get("episode")))
-                if identity is None:
-                    continue
-                case = {"case_id": str(identity), "task": str(row.get("task") or "webshop"),
-                        "trials": row["trials"], "resource_usage": row.get("resource_usage", {})}
+                if isinstance(row.get("case_id"), str) and row["case_id"]:
+                    # SDK-native checkpoints carry source identities and extra
+                    # adapter fields; keep them when the worker is killed.
+                    case = dict(row)
+                else:
+                    identity = row.get("name", row.get("sample_index", row.get("episode")))
+                    if identity is None:
+                        continue
+                    case = {"case_id": str(identity), "task": str(row.get("task") or "webshop"),
+                            "trials": row["trials"], "resource_usage": row.get("resource_usage", {})}
                 previous = found.get(case["case_id"])
                 if previous is None or len(case["trials"]) > len(previous["trials"]):
                     found[case["case_id"]] = case

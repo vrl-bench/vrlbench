@@ -153,7 +153,7 @@ def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, ac
     loop_metadata = dict(metadata or {})
     shared_trial_metadata = dict(trial_metadata or {})
     benchmark = str(loop_metadata.get('benchmark') or '').strip().lower()
-    formal_online_benchmark = benchmark in {'miniwob', 'webshop'}
+    formal_online_benchmark = benchmark in {'miniwob', 'webshop', 'webarena', 'osworld'}
     shared_policy_task = ''
     if formal_online_benchmark:
         max_environment_steps = shared_trial_metadata.get('max_environment_steps')
@@ -243,7 +243,7 @@ def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, ac
     initial_trial = TrialResult(trial=0, success=bool(success), trajectory=trajectory, policy_trajectory=policy_trajectory, actor_trajectory=actor_trajectory, controller_state=snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None, spatial_state=snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None, trial_metadata=shared_trial_metadata, llm_usage=usage_snapshot)
     return (EpisodeResult(trials=[initial_trial], resource_usage=usage_snapshot), ledger)
 
-def run_episode(actor: Callable[[], str], manager: Callable[[str], bool], er_slot: ERSlot, model: str, total_trials: int=6, controller: Optional[InterEpisodeController]=None, initial_result: Optional[EpisodeResult]=None, reset_state: bool=True, metadata: Optional[dict[str, Any]]=None, token_ledger: Optional[TokenUsageLedger]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False) -> EpisodeResult:
+def run_episode(actor: Callable[[], str], manager: Callable[[str], bool], er_slot: ERSlot, model: str, total_trials: int=6, controller: Optional[InterEpisodeController]=None, initial_result: Optional[EpisodeResult]=None, reset_state: bool=True, metadata: Optional[dict[str, Any]]=None, token_ledger: Optional[TokenUsageLedger]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False, on_trial: Callable[[EpisodeResult], None] | None=None) -> EpisodeResult:
     """Run one task instance while recording total provider tokens."""
     if token_ledger is not None and max_total_tokens is not None:
         raise ValueError('pass either token_ledger or max_total_tokens, not both')
@@ -257,11 +257,11 @@ def run_episode(actor: Callable[[], str], manager: Callable[[str], bool], er_slo
         if not seeded and initial_result.resource_usage:
             ledger.absorb(initial_result.resource_usage)
     with _llm.token_budget_scope(ledger):
-        result = _run_episode_impl(actor=actor, manager=manager, er_slot=er_slot, model=model, total_trials=total_trials, controller=controller, initial_result=initial_result, reset_state=reset_state, metadata=metadata, usage_ledger=ledger)
+        result = _run_episode_impl(actor=actor, manager=manager, er_slot=er_slot, model=model, total_trials=total_trials, controller=controller, initial_result=initial_result, reset_state=reset_state, metadata=metadata, usage_ledger=ledger, on_trial=on_trial)
     result.resource_usage = ledger.snapshot()
     return result
 
-def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], er_slot: ERSlot, model: str, total_trials: int=6, controller: Optional[InterEpisodeController]=None, initial_result: Optional[EpisodeResult]=None, reset_state: bool=True, metadata: Optional[dict[str, Any]]=None, usage_ledger: TokenUsageLedger | None=None) -> EpisodeResult:
+def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], er_slot: ERSlot, model: str, total_trials: int=6, controller: Optional[InterEpisodeController]=None, initial_result: Optional[EpisodeResult]=None, reset_state: bool=True, metadata: Optional[dict[str, Any]]=None, usage_ledger: TokenUsageLedger | None=None, on_trial: Callable[[EpisodeResult], None] | None=None) -> EpisodeResult:
     """Run one episode under the Actor-Manager loop.
 
     Args:
@@ -273,7 +273,7 @@ def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], 
     """
     loop_metadata = dict(metadata or {})
     benchmark = str(loop_metadata.get('benchmark') or '').strip().lower()
-    formal_online_benchmark = benchmark in {'miniwob', 'webshop'}
+    formal_online_benchmark = benchmark in {'miniwob', 'webshop', 'webarena', 'osworld'}
     usage_ledger = usage_ledger or TokenUsageLedger()
     active_controller: Any | None = controller
     if reset_state:
@@ -441,6 +441,8 @@ def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], 
                 er_name=er_slot.__class__.__name__, er_section=er_section)
         controller_state = snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None
         result.trials.append(TrialResult(trial=t, success=success, trajectory=trajectory, policy_trajectory=policy_trajectory, actor_trajectory=actor_trajectory, context='\n\n'.join((value for value in (context, user_context) if value)), temporal_decision=temporal_decision, spatial_state_pre=controller_state_pre, spatial_state=controller_state, controller_decision=controller_decision, controller_state_pre=controller_state_pre, controller_state=controller_state, trial_metadata=trial_metadata, llm_usage=usage_ledger.delta(usage_before), system_context=context, user_context=user_context))
+        if on_trial is not None:
+            on_trial(EpisodeResult(trials=list(result.trials), resource_usage=usage_ledger.snapshot()))
         if success:
             break
     return result

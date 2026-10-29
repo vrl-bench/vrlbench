@@ -98,6 +98,22 @@ class _ActorProxy:
             llm.set_user_context(user)
 
 
+def _record_delivered_context(result: Any, decisions: Mapping[int, dict[str, Any]]) -> Any:
+    """Use actual exposure decisions for both live checkpoints and final records."""
+    for index, trial in enumerate(result.trials):
+        decision = decisions.get(trial.trial)
+        if decision is None:
+            continue  # A copied shared first trial was not executed by this proxy.
+        system = decision["prepared_system_context"] if decision["exposed"] else ""
+        user = decision["prepared_user_context"] if decision["exposed"] else ""
+        result.trials[index] = replace(
+            trial, system_context=system, user_context=user,
+            context="\n\n".join(value for value in (system, user) if value),
+            trial_metadata={**trial.trial_metadata, "replay_gate": decision},
+        )
+    return result
+
+
 def wrap_run_episode(original: Callable[..., Any], *, gate: Mapping[str, Any],
                      benchmark: str, policy_factory: Callable[[], Any] | None = None) -> Callable[..., Any]:
     """Wrap one SDK-bound loop, without editing the reference implementation."""
@@ -130,17 +146,11 @@ def wrap_run_episode(original: Callable[..., Any], *, gate: Mapping[str, Any],
             kwargs["actor"] = proxy
         else:
             args = (proxy, *args[1:])
+        on_trial = kwargs.get("on_trial")
+        if on_trial is not None:
+            def checkpoint(result: Any) -> None:
+                on_trial(_record_delivered_context(result, proxy.reads))
+            kwargs["on_trial"] = checkpoint
         result = original(*args, **kwargs)
-        for index, trial in enumerate(result.trials):
-            decision = proxy.reads.get(trial.trial)
-            if decision is None:
-                continue  # A copied shared first trial was not executed by this proxy.
-            system = decision["prepared_system_context"] if decision["exposed"] else ""
-            user = decision["prepared_user_context"] if decision["exposed"] else ""
-            result.trials[index] = replace(
-                trial, system_context=system, user_context=user,
-                context="\n\n".join(value for value in (system, user) if value),
-                trial_metadata={**trial.trial_metadata, "replay_gate": decision},
-            )
-        return result
+        return _record_delivered_context(result, proxy.reads)
     return run

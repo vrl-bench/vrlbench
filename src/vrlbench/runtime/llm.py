@@ -1,4 +1,5 @@
 import logging
+import base64
 import os
 import threading
 import time
@@ -227,7 +228,8 @@ def _admit_llm_call(messages: list[dict[str, str]], *, model: str, requested_max
     ledger = _get_token_ledger()
     if ledger is None:
         return int(requested_max_tokens) if requested_max_tokens is not None else None
-    return ledger.admit_call(estimated_prompt_tokens=_estimate_message_tokens(messages, model), requested_completion_tokens=requested_max_tokens)
+    estimate = _estimate_message_tokens(messages, model) if ledger.max_total_tokens is not None else 0
+    return ledger.admit_call(estimated_prompt_tokens=estimate, requested_completion_tokens=requested_max_tokens)
 
 def _record_resource_usage(response: object) -> None:
     usage = _usage_payload(response)
@@ -245,7 +247,7 @@ def _record_resource_failure() -> None:
     if ledger is not None:
         ledger.record_failure()
 
-def complete(prompt: str, model: str, system: Optional[str]=None, temperature: float=0.0, max_tokens: int | None=1024, seed: int=42, stop: str | list[str] | None=None, retry_on_error: bool=True) -> str:
+def complete(prompt: str, model: str, system: Optional[str]=None, temperature: float=0.0, max_tokens: int | None=1024, seed: int=42, stop: str | list[str] | None=None, retry_on_error: bool=True, *, images: list[bytes] | None=None) -> str:
     """LLM call (simple retry, no temperature escalation).
 
     Auto-injects working memory context into system prompt if active.
@@ -258,7 +260,24 @@ def complete(prompt: str, model: str, system: Optional[str]=None, temperature: f
     messages: list = []
     if system:
         messages.append({'role': 'system', 'content': system})
-    messages.append({'role': 'user', 'content': prompt})
+    content: Any = prompt
+    if images:
+        ledger = _get_token_ledger()
+        if ledger is not None and ledger.max_total_tokens is not None:
+            # Image billing is provider/model specific; a text-token estimate
+            # cannot promise a strict pre-call ceiling for screenshot inputs.
+            raise ValueError('image requests do not support max_total_tokens; use provider usage accounting and a run timeout')
+        content = [{'type': 'text', 'text': prompt}]
+        for raw in images:
+            if not isinstance(raw, bytes):
+                raise TypeError('images must contain PNG or JPEG bytes')
+            mime = ('image/png' if raw.startswith(b'\x89PNG\r\n\x1a\n') else
+                    'image/jpeg' if raw.startswith(b'\xff\xd8\xff') else None)
+            if mime is None:
+                raise ValueError('images must contain PNG or JPEG bytes')
+            encoded = base64.b64encode(raw).decode('ascii')
+            content.append({'type': 'image_url', 'image_url': {'url': f'data:{mime};base64,{encoded}'}})
+    messages.append({'role': 'user', 'content': content})
     extra_body = _provider_extra_body(model)
     reasoning_effort = _fixed_reasoning_effort(model)
     reasoning = _reasoning_controls_sampling(model, extra_body, reasoning_effort)
