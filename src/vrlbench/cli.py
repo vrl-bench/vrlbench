@@ -34,6 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     replay.add_argument("paths", type=Path, nargs="+", help="evaluation.json files or run directories")
     replay.add_argument("--case", help="include one recorded case ID")
     replay.add_argument("--output", type=Path, help="new HTML file; default: first run's replay.html")
+    replay.add_argument("--external-images", action="store_true",
+                        help="store original images once in a sibling <stem>.assets directory")
     compare = commands.add_parser("compare", help="compare completed simulation runs with matching cases, model, and budgets")
     compare.add_argument("paths", type=Path, nargs="+")
     compare.add_argument("--statistics", action="store_true", help="add paired intervals, exact tests and conditional power; requires [analysis]")
@@ -52,7 +54,8 @@ def main(argv: list[str] | None = None) -> int:
             first = args.paths[0]
             root = first if first.is_dir() else first.parent
             output = args.output or root / "replay.html"
-            path = export_replay(args.paths, output, case_id=args.case)
+            path = export_replay(args.paths, output, case_id=args.case,
+                                 external_images=args.external_images)
             print(f"Replay saved: {path}")
             print("Open this HTML file in a browser. No model or environment was executed.")
             return 0

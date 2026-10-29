@@ -14,6 +14,7 @@ from html.parser import HTMLParser
 import json
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import quote
 
 from .inspection import inspect_case
 from .results import SimulationResult
@@ -281,22 +282,77 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
     return {"schema_version": 1, "runs": runs}
 
 
-def export_replay(paths: Iterable[str | Path], output: str | Path, *, case_id: str | None = None) -> Path:
-    """Write a self-contained HTML report without overwriting any existing file."""
+def export_replay(paths: Iterable[str | Path], output: str | Path, *,
+                  case_id: str | None = None, external_images: bool = False) -> Path:
+    """Write a replay, embedding images by default, without overwriting outputs."""
+    if type(external_images) is not bool:
+        raise TypeError("external_images must be a boolean")
+    requested = Path(output)
+    destination = requested.resolve()
+    if destination.suffix.lower() != ".html":
+        raise ValueError("replay output must be an .html file")
+    if requested.exists() or requested.is_symlink():
+        raise FileExistsError(f"Replay output already exists: {requested}")
+    asset_directory = destination.with_name(destination.stem + ".assets")
+    if external_images and (asset_directory.exists() or asset_directory.is_symlink()):
+        raise FileExistsError(f"Replay asset directory already exists: {asset_directory}")
+
     data = replay_data(paths, case_id=case_id)
+    assets: dict[str, bytes] = {}
+    if external_images:
+        # Only these fields contain snapshots already checked by _snapshot.
+        # Actor text and metadata are not resource references.
+        for run in data["runs"]:
+            for case in run["cases"]:
+                for trial in case["trials"]:
+                    images = [(trial, "initial_image")]
+                    images.extend((frame, field) for frame in trial["frames"]
+                                  for field in ("before_image", "after_image"))
+                    for record, field in images:
+                        source = record[field]
+                        if source is None:
+                            continue
+                        header, encoded = source.split(",", 1)
+                        suffix = {"data:image/png;base64": ".png",
+                                  "data:image/jpeg;base64": ".jpg"}[header]
+                        raw = base64.b64decode(encoded, validate=True)
+                        filename = hashlib.sha256(raw).hexdigest() + suffix
+                        assets.setdefault(filename, raw)
+                        record[field] = quote(asset_directory.name, safe="") + "/" + filename
+
     content = json.dumps(data, ensure_ascii=False, allow_nan=False)
     # A transcript can contain </script>; JSON quoting alone is insufficient.
     for source, replacement in (("&", "\\u0026"), ("<", "\\u003c"), (">", "\\u003e"),
                                 ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
         content = content.replace(source, replacement)
     template = Path(__file__).with_name("_replay.html").read_text(encoding="utf-8")
+    if external_images:
+        template = template.replace("<head>", '<head>\n<meta http-equiv="Content-Security-Policy" '
+                                    'content="img-src \'self\' data:">', 1)
     rendered = template.replace("__VRLBENCH_REPLAY_DATA__", content)
     if len(rendered.encode("utf-8")) > _MAX_REPORT_BYTES:
-        raise ValueError("Replay exceeds 64 MiB; select one case with --case")
-    destination = Path(output).resolve()
-    if destination.suffix.lower() != ".html":
-        raise ValueError("replay output must be an .html file")
+        raise ValueError("Replay exceeds 64 MiB; use --external-images / external_images=True "
+                         "or select one case with --case")
+
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("x", encoding="utf-8") as stream:
-        stream.write(rendered)
+    created: list[Path] = []
+    created_directory = False
+    try:
+        if assets:
+            asset_directory.mkdir()
+            created_directory = True
+            for filename, raw in assets.items():
+                path = asset_directory / filename
+                with path.open("xb") as stream:
+                    created.append(path)
+                    stream.write(raw)
+        with destination.open("x", encoding="utf-8") as stream:
+            created.append(destination)
+            stream.write(rendered)
+    except BaseException:
+        for path in reversed(created):
+            path.unlink(missing_ok=True)
+        if created_directory:
+            asset_directory.rmdir()
+        raise
     return destination

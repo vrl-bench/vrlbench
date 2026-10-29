@@ -1,6 +1,7 @@
 """Saved-run replay is offline, faithful to recorded time, and inert."""
 from __future__ import annotations
 
+import base64
 import hashlib
 from copy import deepcopy
 import json
@@ -60,18 +61,19 @@ class ReplayViewerTests(unittest.TestCase):
             remaining_environment_steps=budget - native - len(events), invalid_action_events=events)
         return row
 
-    def viewer_positions(self, requests):
+    def viewer_positions(self, requests, *, html=None):
         """Exercise the local viewer with a tiny DOM stub, not a browser."""
         node = shutil.which("node")
         if not node:
             self.skipTest("Node.js is not available for the offline viewer state check")
-        output = export_replay([self.run], self.root / "ui.html").read_text(encoding="utf-8")
+        output = (html if html is not None else
+                  export_replay([self.run], self.root / "ui.html").read_text(encoding="utf-8"))
         embedded = output.split('id="replay-data">', 1)[1].split("</script>", 1)[0]
         script = output.split('<script>\n', 1)[1].split("</script>", 1)[0]
         harness = r'''
 const input=JSON.parse(require('fs').readFileSync(0,'utf8'));
 class Element {
-  constructor(){this.children=[];this._text='';this.events={};this.style={};this.attrs={};this.hidden=false;
+  constructor(tag=''){this.tagName=tag.toUpperCase();this.children=[];this._text='';this.events={};this.style={};this.attrs={};this.hidden=false;
     this.classList={add(){},remove(){},toggle(){}};}
   set textContent(value){this._text=String(value);this.children=[];}
   get textContent(){return this._text+this.children.map(c=>c.textContent).join('');}
@@ -82,14 +84,16 @@ class Element {
   addEventListener(name,fn){this.events[name]=fn;}
 }
 const elements={};const get=id=>elements[id]||(elements[id]=new Element());
-global.document={getElementById:get,createElement:()=>new Element(),hidden:false,
+global.document={getElementById:get,createElement:tag=>new Element(tag),hidden:false,
   querySelectorAll:()=>['phase-observe','phase-act','phase-feedback','phase-end'].map(get),addEventListener(){}};
 get('replay-data').textContent=JSON.stringify(input.data);get('speed').value='1600';
 eval(input.script);
 function snapshot(){return {states:Object.fromEntries(get('evaluation-state').children.map(r=>r.children.map(c=>c.textContent))),
   heading:get('action-heading').textContent,action:get('action-code').textContent,feedback:get('feedback-text').textContent,
   outcome_hidden:get('outcome').hidden,memory_after_hidden:get('memory-state-after-wrap').hidden,
-  metadata:get('metadata').textContent,error:get('error').textContent};}
+  metadata:get('metadata').textContent,error:get('error').textContent,
+  images:get('observation').children.filter(child=>child.tagName==='IMG').map(child=>child.src),
+  mode:get('observation-mode').textContent};}
 const out=[snapshot()];
 for(const request of input.requests){
   if(request.trial!==undefined)get('timeline').children[request.trial].children[0].events.click();
@@ -269,6 +273,69 @@ process.stdout.write(JSON.stringify(out));
         self.assertIn("checksum", frame["before_snapshot_notice"])
         self.assertEqual(frame["before_snapshot_notice"], frame["after_snapshot_notice"])
 
+    def test_external_images_are_deduplicated_raw_relative_and_exclusive(self):
+        raw = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRskAAAAASUVORK5CYII="
+        )
+        digest = hashlib.sha256(raw).hexdigest()
+        image = self.run / "reset.png"
+        image.write_bytes(raw)
+        duplicate = self.run / "after.png"
+        duplicate.write_bytes(raw)
+        literal = "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+        row = self.payload["cases"][0]["trials"][0]
+        row["policy_trajectory"] = trace(initial=literal)
+        row["trial_metadata"]["replay_observations"] = [
+            {"observation_index": index, "kind": "image", "path": str(path), "sha256": digest}
+            for index, path in enumerate((image, duplicate))]
+        self.save()
+
+        output = self.root / "visual #1%.html"
+        assets = self.root / "visual #1%.assets"
+        export_replay([self.run], output, external_images=True)
+        html = output.read_text(encoding="utf-8")
+        data = json.loads(html.split('id="replay-data">', 1)[1].split("</script>", 1)[0])
+        trial = data["runs"][0]["cases"][0]["trials"][0]
+        expected = "visual%20%231%25.assets/" + digest + ".png"
+        self.assertEqual(trial["initial_image"], expected)
+        self.assertEqual(trial["frames"][0]["before_image"], expected)
+        self.assertEqual(trial["frames"][0]["after_image"], expected)
+        self.assertEqual(trial["initial_observation"], literal)
+        self.assertEqual(trial["frames"][0]["action"], "click[item]")
+        self.assertEqual([path.name for path in assets.iterdir()], [digest + ".png"])
+        self.assertEqual((assets / (digest + ".png")).read_bytes(), raw)
+        self.assertIn('content="img-src \'self\' data:"', html)
+        shown = self.viewer_positions([], html=html)[0]
+        self.assertEqual(shown["images"], [expected])
+        self.assertEqual(shown["mode"], "Recorded screenshot")
+        embedded = html.split('id="replay-data">', 1)[1].split("</script>", 1)[0]
+        for invalid in ("https://example.org/x.assets/", "../outside.assets/",
+                        "..%2Foutside.assets/", "nested%2Foutside.assets/",
+                        "nested%5Coutside.assets/"):
+            bad = invalid + digest + ".png"
+            trial["initial_image"] = bad
+            trial["frames"][0]["before_image"] = bad
+            trial["frames"][0]["after_image"] = bad
+            untrusted = html.replace(embedded, json.dumps(data), 1)
+            with self.subTest(image=bad):
+                rejected = self.viewer_positions([], html=untrusted)[0]
+                self.assertEqual(rejected["images"], [])
+                self.assertEqual(rejected["mode"], "Recorded text observation")
+        with self.assertRaises(FileExistsError):
+            export_replay([self.run], output, external_images=True)
+        self.assertEqual(output.read_text(encoding="utf-8"), html)
+        self.assertEqual((assets / (digest + ".png")).read_bytes(), raw)
+
+        blocked = self.root / "blocked.html"
+        existing = self.root / "blocked.assets"
+        existing.mkdir()
+        sentinel = existing / "keep"
+        sentinel.write_bytes(b"existing")
+        with self.assertRaises(FileExistsError):
+            export_replay([self.run], blocked, external_images=True)
+        self.assertFalse(blocked.exists())
+        self.assertEqual(sentinel.read_bytes(), b"existing")
+
     def test_shared_trial_snapshots_require_the_explicit_source_run_even_after_moving(self):
         source = self.root / "retry"
         source.mkdir()
@@ -358,7 +425,7 @@ process.stdout.write(JSON.stringify(out));
         output = self.root / "replay.html"
         script = ("import sys\n"
                   "from vrlbench.cli import main\n"
-                  f"assert main(['replay', {str(self.run)!r}, '--output', {str(output)!r}]) == 0\n"
+                  f"assert main(['replay', {str(self.run)!r}, '--output', {str(output)!r}, '--external-images']) == 0\n"
                   "assert 'openai' not in sys.modules\n"
                   "assert 'vrlbench.runtime' not in sys.modules\n")
         env = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONDONTWRITEBYTECODE": "1"}

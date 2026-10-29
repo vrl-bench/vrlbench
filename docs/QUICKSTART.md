@@ -434,6 +434,8 @@ a name or text, nonnegative positions, and positive dimensions. The table
 preserves roles, names, text, states, and screen bounds without a token or
 row-count cutoff. Memory writers receive this recorded text trace, not the
 screenshot bytes.
+For image-heavy runs, export with `vrlbench replay RUN --external-images --output replay.html`;
+keep the HTML beside its `replay.assets/` directory, which stores each original image once.
 
 Every trial calls `DesktopEnv.reset(task_config=...)` to restore the snapshot
 and task setup. The native `evaluate()` result determines success; `DONE`,

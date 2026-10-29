@@ -98,7 +98,10 @@
   function renderObservation(frame){
     const container=$('observation');container.replaceChildren();
     const prefix=state.after?'after':'before';const observation=frame[prefix+'_observation'];const image=frame[prefix+'_image'];const html=frame[prefix+'_html'];
-    if(typeof image==='string'&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/.test(image)){
+    const assetMatch=typeof image==='string'?/^((?:[A-Za-z0-9_.~-]|%[0-9A-F]{2})+\.assets)\/[a-f0-9]{64}\.(png|jpg)$/.exec(image):null;
+    let recordedAsset=false;
+    if(assetMatch){try{recordedAsset=!/[\/\\]/.test(decodeURIComponent(assetMatch[1]));}catch{}}
+    if(typeof image==='string'&&(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/.test(image)||recordedAsset)){
       const img=document.createElement('img');img.src=image;img.alt=frame.observation_only?'Recorded initial environment screenshot':isRejected(frame)?'Unchanged recorded environment screenshot at rejected actor response':'Recorded environment screenshot '+(state.after?'after':'before')+' action '+(frame.step_index+1);container.appendChild(img);$('observation-mode').textContent='Recorded screenshot';$('capture-note').textContent='Saved environment image at this replay position.';
       if(isKnown(observation)){const details=node('details','details');details.style.margin='0';details.style.padding='10px 16px';const summary=node('summary','','Recorded observation text');details.append(summary,node('pre','',recorded(observation)));container.appendChild(details);}
     }else if(typeof html==='string'&&html){
