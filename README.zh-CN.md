@@ -59,18 +59,19 @@ VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。
 </p>
 
 <p align="center">
-  <strong>0.1</strong> · MiniWoB + WebShop · 可复用的记忆方法库 ·
+  <strong>0.1</strong> · 在线计算机操作任务 · 可复用的记忆方法库 ·
   可扩展的方法、模型与任务
 </p>
 
 ## 快速开始
 
-选择任务环境，配置模型与记忆方法，再使用统一的 `simulate` → `inspect` → `compare` 流程。MiniWoB 和 WebShop 是首批接入的环境，也可以通过任务适配器接入自己的任务。
+选择任务环境，配置模型与记忆方法，再用 `simulate` → `inspect` → `compare` 完成在线计算机操作任务的评测。
 
 | 环境 | 任务类型 | 安装与配置 |
 |---|---|---|
 | MiniWoB | 浏览器与界面操作 | [Python 3.12 + Chromium](docs/QUICKSTART.md#use-miniwob) · [示例配置](examples/configs/miniwob_retry.json) |
 | WebShop | 交互式购物 | [Python 3.10 + Java 11](docs/QUICKSTART.md#webshop-setup) · [示例配置](examples/configs/webshop_retry.json) |
+| WebArena | 自部署网站上的操作任务 | [网站与浏览器环境](docs/QUICKSTART.md#use-webarena) · [示例配置](examples/configs/webarena_retry.json) |
 | 自己的任务 | 自有智能体与环境 | [接入任务适配器](docs/DEVELOPMENT.md#add-a-task-environment) |
 
 克隆仓库：

@@ -388,6 +388,31 @@ def _environment_identity_check(payloads: Sequence[Mapping[str, Any]], context: 
     """Match recorded native WebShop source/data/index identities, not build hosts."""
     digests, missing = set(), []
     benchmark = context["benchmark"]
+    if (isinstance(benchmark, Mapping) and benchmark.get("factory") is None
+            and benchmark.get("name") == "webarena"):
+        identities, missing = [], []
+
+        def sha256(value: Any) -> bool:
+            return (isinstance(value, str) and len(value) == 64
+                    and all(char in "0123456789abcdefABCDEF" for char in value))
+
+        for index, payload in enumerate(payloads):
+            rows = payload.get("cases", [])
+            identity = {row["case_id"]: row.get("source_identity") for row in rows}
+            if not identity or any(not isinstance(value, Mapping) or not value for value in identity.values()):
+                missing.append(index)
+            else:
+                identities.append(json.dumps(identity, sort_keys=True, allow_nan=False))
+                if any(not sha256(value.get("config_sha256"))
+                       or not sha256(value.get("reset_source_sha256"))
+                       or not isinstance(value.get("judge_model"), str)
+                       or not value["judge_model"].strip()
+                       for value in identity.values()):
+                    missing.append(index)
+        if len(set(identities)) > 1:
+            raise ValueError("results have different recorded task/environment identities")
+        return {"scope": "recorded_task_config_and_environment_settings",
+                "status": "unverified" if missing else "verified", "missing_run_indices": missing}
     applicable = (isinstance(benchmark, Mapping) and benchmark.get("name") == "webshop"
                   and benchmark.get("factory") is None)
     for index, payload in enumerate(payloads):

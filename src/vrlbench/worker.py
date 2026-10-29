@@ -35,11 +35,12 @@ def _persist_request_event(callback: Any, *args: Any) -> Any:
 
 
 class _CompletionProxy:
-    def __init__(self, owner: "_ClientProxy") -> None:
+    def __init__(self, owner: "_ClientProxy", *, apply_options: bool = True) -> None:
         self.owner = owner
+        self.apply_options = apply_options
 
     def create(self, **kwargs: Any) -> Any:
-        options = self.owner.options
+        options = self.owner.options if self.apply_options else {}
         forwarded = dict(kwargs)
         for key, value in options.items():
             if value is None:
@@ -84,6 +85,9 @@ class _ClientProxy:
         self.options = dict(options)
         self.journal = journal
         self.chat = SimpleNamespace(completions=_CompletionProxy(self))
+        # Native task evaluators keep their own model and generation parameters.
+        # They still use the same client, credentials and durable usage journal.
+        self.native_chat = SimpleNamespace(completions=_CompletionProxy(self, apply_options=False))
 
     @property
     def client(self) -> Any:

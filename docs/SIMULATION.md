@@ -43,7 +43,7 @@ context without interpreting or repairing its policy decisions.
    conditions, and compare it with Retry or another system.
 
 The [trial-loop diagram](assets/memory-research.svg) expands steps 3–4.
-MiniWoB and WebShop use the packaged environment adapters and common trial loop.
+MiniWoB, WebShop, and WebArena use the common trial loop.
 Custom workloads use the same runtime through `runtime.run_episode(...)`.
 
 By default, a case has six trials; each native MiniWoB trial has an action
@@ -51,14 +51,24 @@ budget of 128, and each WebShop trial has 15. Explicit configurations override
 these defaults and retain their resolved values in the saved results.
 
 `trials` limits the number of complete attempts at a case;
-`max_environment_steps` sets the action budget within each MiniWoB or WebShop
-trial. Each dispatched primitive action consumes one unit. A response with no
+`max_environment_steps` sets the action budget within each
+trial. Each native environment action consumes one unit. A response with no
 valid action also consumes one unit: the adapter records the rejected response,
 returns parser feedback without changing the environment, and continues while
 budget remains. Actual environment steps and rejected responses are counted
 separately in trial metadata. Success stops the case immediately; an environment
 terminal failure or an exhausted action budget ends the current trial. Model
 service failures propagate as execution errors, not task failures.
+
+### Additional workloads
+
+| Workload | Reset and outcome semantics | Setup |
+|---|---|---|
+| WebArena | Restore website data through a required reset callback, then reset the browser; use the official task evaluator | [WebArena](QUICKSTART.md#use-webarena) |
+
+The WebArena adapter currently executes independent first
+trials, rather than importing a shared T1. Keep cases, initial-state restoration,
+models, and budgets identical when comparing memory methods.
 
 The overview calls the retained within-case trial history a **replay buffer**.
 Failed executed traces accumulate across trials, and the memory method controls
@@ -90,8 +100,11 @@ responses, or credentials. Run-level model-usage totals count new provider
 requests in this run; a copied shared first trial is not charged again.
 Case-level ledgers and environment-step totals retain the full simulated trial
 history, including that shared prefix.
-If a run stops before committing a case, completed-call usage remains available;
-an interrupted request with unknown usage is not reported as zero cost.
+Completed trials are checkpointed as they finish. If a later trial fails,
+inspection and replay retain that completed prefix; the unfinished case still
+does not count as a completed evaluation. Completed-call usage also survives
+an interruption, and an interrupted request with unknown usage is not reported
+as zero cost.
 
 Internal memory writes are visible when the system records them. The
 [local example](QUICKSTART.md#3-inspect-memory-and-task-behavior) records actual reads and retention updates in
@@ -104,6 +117,10 @@ state remains unknown; the simulator does not generate agent-thinking explanatio
 | RR@T | Fraction of first-trial failures recovered by T; `null` if none failed initially |
 | Censored AvgT@T | Mean first-success trial, counting unsolved cases as T+1 |
 | Steps, model calls | Recorded interaction and inference use |
+
+WebArena also retains the native evaluator's `environment_score`
+in trial metadata. A score of 1 counts as complete task success; partial native
+scores remain available for inspection rather than being discarded.
 
 Instance-average and task-average SR remain separate. Failed or timed-out runs
 are incomplete, not zero scores; unreported usage stays unknown. Call

@@ -2,13 +2,14 @@
 
 [Back to the README](../README.md)
 
-Choose a task environment, model, and memory system, then use one workflow:
+Choose an interactive environment, model, and memory system, then use one workflow:
 `simulate` → `inspect` → `compare` → revise the memory implementation.
 
 - **[MiniWoB](#use-miniwob):** browser and UI tasks, using the
   [MiniWoB configuration](../examples/configs/miniwob_retry.json).
 - **[WebShop](#webshop-setup):** interactive shopping, using the
   [WebShop configuration](../examples/configs/webshop_retry.json).
+- **[WebArena](#use-webarena):** tasks on self-hosted websites.
 - **[Your tasks](DEVELOPMENT.md#add-a-task-environment):** connect a workload
   adapter while retaining the same memory and analysis interfaces.
 
@@ -317,6 +318,89 @@ vrlbench inspect runs/miniwob_retry
 For memory comparisons, use the same model, tasks, and budgets, then set
 `shared_t1_dir` to the completed Retry run as in the WebShop workflow. The
 [development guide](DEVELOPMENT.md) covers method configuration.
+
+## Additional workloads
+
+WebArena uses the same multi-trial memory lifecycle,
+interaction accounting, inspection, and online metrics. Prepare each native
+environment in its own Python environment, then install `vrlbench[runtime]`
+there. Their dependencies and task assets are not installed by the SDK.
+The adapters have offline interface tests; native installations still need an
+end-to-end check on the execution host before collecting results.
+
+The configurations below contain paths and task identifiers to replace with
+your local selection. Paths resolve from the configuration file's directory.
+Run `--plan` to check the declaration without starting an environment or model.
+For memory comparisons, copy a Retry configuration, change `memory` and
+`output_dir`, and keep the model, cases, reset rules, and budgets fixed.
+This adapter executes independent first trials and does not import
+`shared_t1_dir`. Reflexion uses a domain-neutral writer adaptation here;
+the existing MiniWoB and WebShop prompt routes are unchanged.
+An empty or syntactically invalid response consumes one action opportunity
+without executing an environment action. The actor receives the rejection
+reason and continues while its per-trial budget remains.
+Saved identities check the recorded task files and settings; they do not
+fingerprint a website deployment or VM image. Preserve the same prepared
+environment and snapshot when comparing memory systems.
+
+### Use WebArena
+
+Prepare self-hosted sites, task configurations, authentication state, and
+site URL environment variables using the
+[WebArena setup](https://github.com/web-arena-x/webarena).
+The adapter uses the `libwebarena==0.0.5` environment API and Playwright
+Chromium. Install environment dependencies in a dedicated environment rather
+than applying the original agent's full requirements, which include an older
+OpenAI client.
+
+```bash
+python -m pip install libwebarena==0.0.5 'numpy<2' 'transformers<5' 'huggingface-hub<1'
+python -m playwright install chromium
+python -m pip install -e '.[runtime]'
+```
+
+Some `must_include` checks use NLTK's tokenizer. Prepare its English resources
+in a private directory rather than letting a grading call download them:
+
+```bash
+export NLTK_DATA="$PWD/external/nltk_data"
+(
+  umask 077
+  python -m nltk.downloader -d "$NLTK_DATA" punkt_tab
+)
+```
+
+Export the native site URL variables required by your tasks: `REDDIT`,
+`SHOPPING`, `SHOPPING_ADMIN`, `GITLAB`, `WIKIPEDIA`, `MAP`, and `HOMEPAGE`.
+Use your self-hosted URLs and authentication files, not public demo sites.
+
+Set the task config paths in
+[`webarena_retry.json`](../examples/configs/webarena_retry.json).
+Use absolute paths for `storage_state` inside native task configurations;
+Playwright resolves that field from the worker's working directory.
+The `reset_factory` is a required deployment hook: replace
+`your_package.environments:make_webarena_reset` with an installed factory that
+returns a callable `reset(case)`. That callable must restore the websites and
+their data to the task's initial state before returning; raising an exception
+or returning `False` stops the run. It runs before every trial, including T1.
+Reopening the browser or returning to the start URL is not a website reset.
+
+The actor receives accessibility-tree text or HTML. The official task evaluator
+determines success, not the reward indicating whether a browser action executed.
+Supported evaluators are `string_match`, `url_match`, and `program_html`.
+Native fuzzy matching and unachievable-task judgments use the SDK transport
+and usage accounting without exposing grading prompts to the actor. Their
+default model remains the upstream `gpt-4-1106-preview`; an explicit
+`params.judge_model` selects another model if your endpoint does not serve it.
+Keep that setting identical across compared methods.
+Set `params.capture_observations: true` to record the browser viewport for
+per-action replay without changing the text actor's input.
+
+```bash
+vrlbench simulate --config examples/configs/webarena_retry.json --plan
+vrlbench simulate --config examples/configs/webarena_retry.json
+vrlbench inspect runs/webarena_retry
+```
 
 <a id="3-inspect-memory-and-task-behavior"></a>
 <a id="2-simulate-two-memory-systems"></a>

@@ -96,20 +96,20 @@ hard to observe in one-off use or cross-task experience reuse.
 </p>
 
 <p align="center">
-  <strong>0.1</strong> · MiniWoB + WebShop · Reusable memory library ·
+  <strong>0.1</strong> · Online computer-control tasks · Reusable memory library ·
   Extensible methods, models, and workloads
 </p>
 
 ## Quick start
 
 Select a workload, configure the model and memory method, then use the same
-`simulate` → `inspect` → `compare` workflow. MiniWoB and WebShop are the first
-integrated environments; add your own tasks through a workload adapter.
+`simulate` → `inspect` → `compare` workflow for online computer-control tasks.
 
 | Environment | Task family | Setup and configuration |
 |---|---|---|
 | MiniWoB | Browser and UI interaction | [Python 3.12 + Chromium](docs/QUICKSTART.md#use-miniwob) · [Example config](examples/configs/miniwob_retry.json) |
 | WebShop | Interactive shopping | [Python 3.10 + Java 11](docs/QUICKSTART.md#webshop-setup) · [Example config](examples/configs/webshop_retry.json) |
+| WebArena | Self-hosted web tasks | [Website and browser setup](docs/QUICKSTART.md#use-webarena) · [Example config](examples/configs/webarena_retry.json) |
 | Your tasks | Your agent and environment | [Connect a workload adapter](docs/DEVELOPMENT.md#add-a-task-environment) |
 
 Clone the repository:

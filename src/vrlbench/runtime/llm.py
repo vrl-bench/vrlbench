@@ -1,6 +1,7 @@
 import logging
 import base64
 import os
+import re
 import threading
 import time
 from contextlib import contextmanager
@@ -231,7 +232,7 @@ def _admit_llm_call(messages: list[dict[str, str]], *, model: str, requested_max
     estimate = _estimate_message_tokens(messages, model) if ledger.max_total_tokens is not None else 0
     return ledger.admit_call(estimated_prompt_tokens=estimate, requested_completion_tokens=requested_max_tokens)
 
-def _record_resource_usage(response: object) -> None:
+def _record_resource_usage(response: object, *, expected_model: str | None = None) -> None:
     usage = _usage_payload(response)
     ledger = _get_token_ledger()
     missing_required_usage = False
@@ -240,12 +241,51 @@ def _record_resource_usage(response: object) -> None:
         missing_required_usage = bool(ledger.require_provider_usage and provider_usage_total(usage) is None)
     if missing_required_usage:
         raise ProviderUsageMissing('provider response has incomplete, invalid, or contradictory token usage required by this run')
-    _validate_provider_identity(response)
+    if expected_model is None:
+        _validate_provider_identity(response)
+    else:
+        observed = str(_field(response, 'model') or '').strip()
+        snapshot = re.fullmatch(re.escape(expected_model) + r'-[0-9]{4}-[0-9]{2}-[0-9]{2}', observed)
+        if observed != expected_model and snapshot is None:
+            raise ProviderIdentityMismatch(f'native evaluator response model differs from its request: expected={expected_model!r}, observed={observed!r}')
 
 def _record_resource_failure() -> None:
     ledger = _get_token_ledger()
     if ledger is not None:
         ledger.record_failure()
+
+def complete_messages(messages: list[dict[str, str]], model: str, temperature: float,
+                      max_tokens: int, top_p: float, context_length: int = 0,
+                      stop_token: str | None = None) -> str:
+    """Execute native evaluator messages without actor memory or option mapping.
+
+    The signature matches WebArena's generation callback. ``context_length`` is
+    retained for that callback only; upstream does not send it to the provider.
+    Evaluator failures propagate without retries or replacement zero scores.
+    """
+    del context_length
+    admitted = _admit_llm_call(messages, model=model, requested_max_tokens=max_tokens)
+    if admitted != max_tokens:
+        raise TokenBudgetExceeded('remaining token budget cannot fit the unchanged native evaluator request')
+    client = get_client()
+    chat = getattr(client, 'native_chat', client.chat)
+    _respect_provider_call_spacing()
+    try:
+        response = chat.completions.create(
+            model=model, messages=messages, temperature=temperature,
+            max_tokens=max_tokens, top_p=top_p,
+            stop=[stop_token] if stop_token else None,
+        )
+    except TokenBudgetExceeded:
+        raise
+    except Exception:
+        _record_resource_failure()
+        raise
+    _record_resource_usage(response, expected_model=model)
+    text = response.choices[0].message.content
+    if not isinstance(text, str):
+        raise TypeError('native evaluator must return text')
+    return text
 
 def complete(prompt: str, model: str, system: Optional[str]=None, temperature: float=0.0, max_tokens: int | None=1024, seed: int=42, stop: str | list[str] | None=None, retry_on_error: bool=True, *, images: list[bytes] | None=None) -> str:
     """LLM call (simple retry, no temperature escalation).

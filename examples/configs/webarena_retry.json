@@ -1,0 +1,18 @@
+{
+  "workload": {
+    "name": "webarena",
+    "cases": [{"case_id": "webarena-0", "config_file": "../../external/webarena/config_files/0.json"}],
+    "params": {
+      "observation_type": "accessibility_tree",
+      "headless": true,
+      "reset_factory": {"entrypoint": "your_package.environments:make_webarena_reset", "kwargs": {}}
+    }
+  },
+  "memory": {"name": "retry"},
+  "model": {"name": "YOUR_MODEL_NAME", "api_key_env": "OPENAI_API_KEY", "request_options": {}},
+  "trials": 6,
+  "max_environment_steps": 30,
+  "require_provider_usage": true,
+  "timeout_seconds": 1800,
+  "output_dir": "../../runs/webarena_retry"
+}

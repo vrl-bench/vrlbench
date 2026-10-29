@@ -595,4 +595,7 @@ def run_backend(spec: Mapping[str, Any], er_name: str, controller: str) -> tuple
         return method(dict(spec), runtime), [{"role": "benchmark", **identity}]
     if benchmark["name"] == "demo":
         return run_demo(spec, er_name, controller), []
+    if benchmark["name"] == "webarena":
+        from .environments.webarena import run
+        return run(spec, BackendRuntime(spec, er_name, controller)), []
     return run_reference(spec, er_name, controller), []
