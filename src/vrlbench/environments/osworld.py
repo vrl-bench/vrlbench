@@ -18,6 +18,7 @@ from numbers import Real
 from pathlib import Path
 import re
 from typing import Any, Callable, Mapping
+import xml.etree.ElementTree as ET
 
 from .interactive import Observation, TaskState, Transition, run_cases
 
@@ -52,6 +53,68 @@ def _action(raw: str) -> str:
     return match.group(1).strip() if match and text.count("```") == 2 else text
 
 
+def _accessibility_text(xml: str) -> str:
+    """Linearize native XML using the upstream OSWorld visible-node filter."""
+    # Adapted and modified from OSWorld's linearize_accessibility_tree/filter_nodes.
+    # Apache-2.0 notices and license for this portion: THIRD_PARTY_NOTICES.
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as exc:
+        raise RuntimeError("OSWorld returned malformed accessibility XML") from exc
+    lines = ["role\tname\ttext\tstates\tbounds (x, y, w, h)\tclass\tdescription"]
+    for node in root.iter():
+        role = node.tag.rsplit("}", 1)[-1]
+        if not (role.startswith("document") or role.endswith((
+                "item", "button", "heading", "label", "scrollbar", "searchbox",
+                "textbox", "link", "tabelement", "textfield", "textarea", "menu"))
+                or role in {"alert", "canvas", "check-box", "combo-box", "entry",
+                            "icon", "image", "paragraph", "scroll-bar", "section",
+                            "slider", "static", "table-cell", "terminal", "text",
+                            "netuiribbontab", "start", "trayclockwclass",
+                            "traydummysearchcontrol", "uiimage", "uiproperty",
+                            "uiribboncommandbar"}):
+            continue
+        platform = ("windows" if any(key.startswith(
+            "{https://accessibility.windows.example.org/ns/state}") for key in node.attrib)
+            else "ubuntu")
+        namespace = f"https://accessibility.{platform}.example.org/ns/"
+        state_prefix = "{" + namespace + "state}"
+        states = {key[len(state_prefix):]: value for key, value in node.attrib.items()
+                  if key.startswith(state_prefix)}
+        if (states.get("visible") != "true"
+                or (platform == "ubuntu" and states.get("showing") != "true")
+                or not any(states.get(key) == "true"
+                           for key in ("enabled", "editable", "expandable", "checkable"))
+                or not (node.get("name", "") or node.text)):
+            continue
+        component_prefix = "{" + namespace + "component}"
+        try:
+            position = ast.literal_eval(node.get(component_prefix + "screencoord", "(-1, -1)"))
+            size = ast.literal_eval(node.get(component_prefix + "size", "(-1, -1)"))
+        except (ValueError, SyntaxError) as exc:
+            raise RuntimeError("OSWorld accessibility node has invalid screen bounds") from exc
+        if not (isinstance(position, (tuple, list)) and len(position) == 2
+                and isinstance(size, (tuple, list)) and len(size) == 2
+                and all(type(value) is int for value in (*position, *size))):
+            raise RuntimeError("OSWorld accessibility node has invalid screen bounds")
+        if position[0] < 0 or position[1] < 0 or size[0] <= 0 or size[1] <= 0:
+            continue
+        attributes_prefix = "{" + namespace + "attributes}"
+        node_class = node.get(
+            "{" + namespace + "class}class" if platform == "windows"
+            else attributes_prefix + "class", "")
+        text = node.text or ""
+        if not text and node_class.endswith("EditWrapper"):
+            text = node.get("{" + namespace + "value}value", "")
+        fields = (node.get("name", ""), text,
+                  " ".join(f"{key}={value}" for key, value in sorted(states.items())))
+        lines.append("\t".join((
+            role, *(json.dumps(field, ensure_ascii=False) for field in fields),
+            str((*position, *size)), json.dumps(node_class, ensure_ascii=False),
+            json.dumps(node.get(attributes_prefix + "description", ""), ensure_ascii=False))))
+    return "\n".join(lines)
+
+
 def _observation(value: Any) -> Observation:
     if not isinstance(value, Mapping):
         raise TypeError("OSWorld must return an observation mapping")
@@ -76,6 +139,8 @@ def _observation(value: Any) -> Observation:
             if not isinstance(text, str):
                 raise TypeError(f"OSWorld {field} must be text or null")
             if text.strip():
+                if field == "accessibility_tree":
+                    text = _accessibility_text(text)
                 parts.append(f"{label}:\n{text}")
     return Observation(text="\n\n".join(parts), image=screenshot)
 

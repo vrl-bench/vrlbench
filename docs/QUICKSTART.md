@@ -427,8 +427,13 @@ Each response is one self-contained Python program (bare or in one closed code
 block), or a standalone `DONE`, `FAIL`, or `WAIT`. A program mixed with a control
 marker is rejected before execution, rather than partially executed.
 The example enables accessibility text so verbal memory can retain observed
-state changes; the actor also receives the current screenshot. Memory writers
-receive the recorded text trace, not the screenshot bytes.
+state changes; the actor also receives the current screenshot. Native XML is
+formatted as a compact table using OSWorld's visible-node filter: Ubuntu nodes
+must be showing and visible, with an enabled/editable/expandable/checkable state,
+a name or text, nonnegative positions, and positive dimensions. The table
+preserves roles, names, text, states, and screen bounds without a token or
+row-count cutoff. Memory writers receive this recorded text trace, not the
+screenshot bytes.
 
 Every trial calls `DesktopEnv.reset(task_config=...)` to restore the snapshot
 and task setup. The native `evaluate()` result determines success; `DONE`,

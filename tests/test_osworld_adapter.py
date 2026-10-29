@@ -22,6 +22,30 @@ PNG_2_BY_3 = base64.b64decode(
 )
 
 
+ACCESSIBILITY_XML = """<desktop-frame
+    xmlns:st="https://accessibility.ubuntu.example.org/ns/state"
+    xmlns:cp="https://accessibility.ubuntu.example.org/ns/component"
+    xmlns:attr="https://accessibility.ubuntu.example.org/ns/attributes">
+  <application name="Fixture">
+    <push-button name="Save" st:showing="true" st:visible="true" st:enabled="true"
+        cp:screencoord="(12, 34)" cp:size="(56, 20)"
+        attr:toolkit="redundant-toolkit" attr:description="Save document">Save &amp; close</push-button>
+    <combo-box name="Choice" st:showing="true" st:visible="true" st:enabled="true"
+        st:selected="true" cp:screencoord="(70, 34)" cp:size="(60, 20)">Option A</combo-box>
+    <menu-item name="Offscreen item" st:visible="true" st:enabled="true"
+        cp:screencoord="(2, 3)" cp:size="(4, 5)">Offscreen text</menu-item>
+    <label name="Disabled label" st:showing="true" st:visible="true"
+        cp:screencoord="(2, 3)" cp:size="(4, 5)">Disabled text</label>
+    <push-button name="Negative position" st:showing="true" st:visible="true" st:enabled="true"
+        cp:screencoord="(-1, 3)" cp:size="(4, 5)" />
+    <push-button name="Empty size" st:showing="true" st:visible="true" st:enabled="true"
+        cp:screencoord="(2, 3)" cp:size="(0, 5)" />
+    <panel name="Structural container" st:showing="true" st:visible="true" st:enabled="true"
+        cp:screencoord="(0, 0)" cp:size="(100, 100)" />
+  </application>
+</desktop-frame>"""
+
+
 class FakeDesktopEnv:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -31,10 +55,11 @@ class FakeDesktopEnv:
         self.evaluations = 0
         self.closed = False
         self.screenshot = PNG_3_BY_2
+        self.accessibility_tree = ACCESSIBILITY_XML
 
     def observation(self):
         return {"screenshot": self.screenshot,
-                "accessibility_tree": "button Save", "terminal": None,
+                "accessibility_tree": self.accessibility_tree, "terminal": None,
                 "instruction": "Task instruction", "hidden": "not actor-visible"}
 
     def reset(self, *, task_config):
@@ -90,6 +115,24 @@ class OSWorldAdapterTests(unittest.TestCase):
         self.assertIn("3 x 2 pixels", first.observation.text)
         self.assertIn("0 <= x < 3; 0 <= y < 2", first.observation.text)
         self.assertIs(first.observation.image, PNG_3_BY_2)
+
+    def test_accessibility_xml_uses_compact_upstream_visible_nodes(self):
+        session = self.session()
+        observation = session.reset(trial_index=0).observation
+        self.assertIn("role\tname\ttext\tstates\tbounds (x, y, w, h)", observation.text)
+        self.assertIn('push-button\t"Save"\t"Save & close"', observation.text)
+        self.assertIn("(12, 34, 56, 20)", observation.text)
+        self.assertIn('"Save document"', observation.text)
+        self.assertIn("selected=true", observation.text)
+        for excluded in ("Offscreen item", "Disabled label", "Negative position",
+                         "Empty size", "Structural container", "redundant-toolkit",
+                         "xmlns:", "https://accessibility", "<push-button"):
+            self.assertNotIn(excluded, observation.text)
+        self.assertIs(observation.image, PNG_3_BY_2)
+        with patch.object(self.env, "observation", return_value={
+                "screenshot": PNG_3_BY_2, "accessibility_tree": "<desktop-frame>"}):
+            with self.assertRaisesRegex(RuntimeError, "malformed accessibility XML"):
+                session.reset(trial_index=0)
 
     def test_configuration_and_comparison_preserve_task_and_snapshot(self):
         from dataclasses import replace
@@ -298,6 +341,9 @@ class OSWorldAdapterTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["images"], [self.env.observation()["screenshot"]])
         self.assertIs(calls[0][1]["images"][0], PNG_3_BY_2)
         self.assertIn("3 x 2 pixels", calls[0][0])
+        self.assertIn('push-button\t"Save"\t"Save & close"', calls[0][0])
+        self.assertNotIn("redundant-toolkit", calls[0][0])
+        self.assertIn('push-button\t"Save"\t"Save & close"', actor.get_policy_evidence()["initial_observation"])
         self.assertFalse(actor.success)
         self.assertEqual(self.env.evaluations, 1)
         metadata = actor.get_trial_metadata()
