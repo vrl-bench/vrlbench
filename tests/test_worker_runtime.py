@@ -85,13 +85,18 @@ class WorkerTests(unittest.TestCase):
     def request(self, **overrides):
         self.counter += 1
         result = {
-            "benchmark": {"name": "demo", "cases": ["first", "second"], "params": {}, "factory": None},
-            "memory": {"name": "demo_trace", "factory": {
-                "entrypoint": "vrlbench.backends:create_demo_memory", "kwargs": {}}},
+            "benchmark": {"name": "route_control", "cases": [
+                {"case_id": "first", "target": "blue"}, {"case_id": "second", "target": "blue"}],
+                "params": {}, "factory": {
+                    "entrypoint": f"{ROOT}/examples/memory_study/fixture.py:create_backend", "kwargs": {}}},
+            "memory": {"name": "feedback_memory", "factory": {
+                "entrypoint": f"{ROOT}/examples/memory_study/fixture.py:create_memory", "kwargs": {}}},
             "model": {"name": "scripted", "base_url": None, "api_key_env": "OPENAI_API_KEY",
                       "provider": "openai_compatible", "timeout_seconds": 120,
-                      "transport": None, "request_options": {}, "allowed_response_models": []},
-            "trials": 3, "max_environment_steps": 2,
+                      "transport": {
+                          "entrypoint": f"{ROOT}/examples/memory_study/fixture.py:create_no_model_client", "kwargs": {}},
+                      "request_options": {}, "allowed_response_models": []},
+            "trials": 2, "max_environment_steps": 1,
             "output_dir": str(self.root / f"run-{self.counter}"),
             "shared_t1_dir": None, "timeout_seconds": 30, "max_total_tokens": None,
             "require_provider_usage": False, "runtime_env": {},
@@ -109,28 +114,6 @@ class WorkerTests(unittest.TestCase):
         path = Path(request["output_dir"]) / "worker_result.json"
         self.assertTrue(path.is_file(), command.stderr)
         return command, json.loads(path.read_text())
-
-    def test_demo_uses_reference_loop_and_memory(self):
-        command, result = self.run_worker(self.request())
-        self.assertEqual(command.returncode, 0, result)
-        self.assertEqual(result["status"], "complete")
-        self.assertEqual([case["case_id"] for case in result["cases"]], ["first", "second"])
-        for case in result["cases"]:
-            first, second = case["trials"]
-            self.assertFalse(first["success"])
-            self.assertEqual(first["context"], "")
-            self.assertTrue(second["success"])
-            self.assertIn(first["trajectory"], second["context"])
-            self.assertFalse(first["trial_metadata"]["task_performance_evaluated"])
-            self.assertEqual(case["resource_usage"]["api_calls"], 0)
-
-    def test_success_stop_and_final_failure_no_update(self):
-        for after, total in ((1, 3), (10, 1)):
-            request = self.request(trials=total)
-            request["benchmark"]["params"] = {"success_after": after}
-            command, result = self.run_worker(request)
-            self.assertEqual(command.returncode, 0, result)
-            self.assertTrue(all(len(case["trials"]) == 1 for case in result["cases"]))
 
     def test_each_case_gets_a_fresh_instance(self):
         plugin = self.root / "recording.py"
@@ -171,25 +154,6 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(command.returncode, 1)
             self.assertEqual(result["error"]["type"], "ValueError")
             self.assertIn("protocol fields", result["error"]["message"])
-
-    def test_demo_cannot_accidentally_call_a_live_model(self):
-        plugin = self.root / "requires_model.py"
-        plugin.write_text(textwrap.dedent('''
-            from vrlbench.memory import ERSlot
-            class Memory(ERSlot):
-                def reset(self): pass
-                def build_section(self): return ''
-                def on_failure(self, trajectory, model):
-                    from vrlbench.runtime.llm import complete
-                    complete(trajectory, model=model)
-            def create(): return Memory()
-        '''))
-        request = self.request(memory={"name": "needs_model", "factory": {
-            "entrypoint": f"{plugin}:create", "kwargs": {}}})
-        command, result = self.run_worker(request)
-        self.assertEqual(command.returncode, 1)
-        self.assertEqual(result["error"]["type"], "DemoModelCallsDisabled")
-        self.assertIn("disables model API calls", result["error"]["message"])
 
     def test_transport_mapping_and_memory_usage(self):
         plugin = self.root / "transport.py"
@@ -245,7 +209,7 @@ class WorkerTests(unittest.TestCase):
         plugin.write_text(textwrap.dedent('''
             class Backend:
                 def run(self, spec, runtime):
-                    return [{'case_id': str(case), 'task': 'custom',
+                    return [{'case_id': case['case_id'], 'task': 'custom',
                              'trials': [{'trial': 0, 'success': True}], 'resource_usage': {}}
                             for case in spec['benchmark']['cases']]
             def create(): return Backend()
@@ -261,7 +225,7 @@ class WorkerTests(unittest.TestCase):
         plugin.write_text(textwrap.dedent('''
             class Backend:
                 def run(self, spec, runtime):
-                    return [{'case_id': 'wrong-' + str(case), 'task': 'custom',
+                    return [{'case_id': 'wrong-' + case['case_id'], 'task': 'custom',
                              'trials': [{'trial': 0, 'success': True}], 'resource_usage': {}}
                             for case in spec['benchmark']['cases']]
             def create(): return Backend()
@@ -272,31 +236,15 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(command.returncode, 1)
         self.assertIn("case identities differ", result["error"]["message"])
 
-    def test_backend_runtime_runs_fresh_memory_through_the_reference_loop(self):
-        plugin = self.root / "loop_backend.py"
-        plugin.write_text(textwrap.dedent('''
-            from dataclasses import asdict
-            class Backend:
-                def run(self, spec, runtime):
-                    cases = []
-                    for case in spec['benchmark']['cases']:
-                        count = [0]
-                        def actor():
-                            count[0] += 1
-                            return 'executed failure' if count[0] == 1 else 'executed success'
-                        episode = runtime.run_episode(actor, lambda trace: trace.endswith('success'))
-                        cases.append({'case_id': str(case), 'task': 'plugin-task',
-                                      'trials': [asdict(trial) for trial in episode.trials],
-                                      'resource_usage': episode.resource_usage})
-                    return cases
-            def create(): return Backend()
-        '''))
-        request = self.request()
-        request["benchmark"]["factory"] = {"entrypoint": f"{plugin}:create", "kwargs": {}}
-        command, result = self.run_worker(request)
+    def test_backend_runtime_delivers_failure_feedback_to_the_next_action(self):
+        command, result = self.run_worker(self.request())
         self.assertEqual(command.returncode, 0, result)
         for case in result["cases"]:
-            self.assertIn("executed failure", case["trials"][1]["context"])
+            first, second = case["trials"]
+            self.assertEqual(json.loads(first["trajectory"])["action"], "amber")
+            self.assertIn('Rejected controls JSON: ["amber"]', second["context"])
+            self.assertEqual(json.loads(second["trajectory"])["action"], "blue")
+            self.assertTrue(second["success"])
 
     def test_sdk_shared_source_requires_matching_settings_and_selection(self):
         from vrlbench.backends import _validate_sdk_shared_source
@@ -310,7 +258,7 @@ class WorkerTests(unittest.TestCase):
         comparison = dict(baseline, output_dir=str(self.root / "comparison"), shared_t1_dir=str(source),
                           memory={"name": "reflexion", "factory": None})
         _validate_sdk_shared_source(comparison)
-        for field, value in (("trials", 5), ("max_environment_steps", 1), ("model", {"name": "other"})):
+        for field, value in (("trials", 5), ("max_environment_steps", 2), ("model", {"name": "other"})):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
                 _validate_sdk_shared_source({**comparison, field: value})
         wrong_cases = {**comparison, "benchmark": {**comparison["benchmark"], "cases": [1]}}
@@ -482,7 +430,7 @@ class WorkerTests(unittest.TestCase):
                     assert 'VEX2_ALLOWED_RESPONSE_MODELS' not in os.environ
                     assert 'VEX2_LLM_REASONING_EFFORT' not in os.environ
                     assert os.environ['VEX2_REQUIRE_SYSTEM_FINGERPRINT'] == '0'
-                    return [{'case_id': str(case), 'task': 'custom',
+                    return [{'case_id': case['case_id'], 'task': 'custom',
                              'trials': [{'trial': 0, 'success': True}], 'resource_usage': {}}
                             for case in spec['benchmark']['cases']]
             def create(): return Backend()
@@ -507,8 +455,12 @@ class WorkerTests(unittest.TestCase):
     def test_singleton_memory_factory_is_rejected(self):
         plugin = self.root / "singleton.py"
         plugin.write_text(textwrap.dedent('''
-            from vrlbench.backends import create_demo_memory
-            singleton = create_demo_memory()
+            from vrlbench.memory import ERSlot
+            class Memory(ERSlot):
+                def reset(self): pass
+                def build_section(self): return ''
+                def on_failure(self, trajectory, model): pass
+            singleton = Memory()
             def create(): return singleton
         '''))
         request = self.request(memory={"name": "singleton", "factory": {

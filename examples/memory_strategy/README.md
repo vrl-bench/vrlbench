@@ -36,8 +36,4 @@ model key or benchmark download:
 
 ```bash
 python examples/memory_strategy/check.py
-vrlbench simulate --config examples/configs/demo_memory.json
 ```
-
-The demo uses scripted trial outcomes to exercise the memory lifecycle.
-`runs/demo_memory/evaluation.json` records the contexts passed between trials.

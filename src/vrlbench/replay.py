@@ -42,8 +42,6 @@ def _case_id(metadata: Mapping[str, Any], benchmark: str) -> str:
         return f"sample_{metadata['sample_index']:04d}"
     if benchmark == "miniwob" and isinstance(metadata.get("task"), str) and type(metadata.get("episode")) is int:
         return f"{metadata['task']}_ep{metadata['episode']}"
-    if benchmark == "demo" and isinstance(metadata.get("task"), str):
-        return metadata["task"]
     raise ValueError("A replay gate requires stable case identity; custom workloads must pass metadata.case_id")
 
 

@@ -495,12 +495,11 @@ retention window affects later actions.
 ### Scripted lifecycle checks
 
 ```bash
-vrlbench demo --output-dir runs/demo --trials 3 --max-environment-steps 15
 python examples/memory_strategy/check.py
 python examples/agent_loop/run.py
 ```
 
-These check the trial loop, memory write/read/reset lifecycle, and method
-integration with fixed traces and responses. They do not evaluate task
+These check the memory write/read/reset lifecycle and method integration
+with fixed traces and responses. They do not evaluate task
 performance. See the [memory interface example](../examples/memory_strategy/README.md)
 and [agent-loop example](../examples/agent_loop/README.md) for details.

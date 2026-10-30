@@ -11,6 +11,9 @@ import tempfile
 import unittest
 from zipfile import ZipFile
 
+ROOT = Path(__file__).resolve().parents[1]
+LOCAL_CONFIG = ROOT / "examples/configs/local_feedback.json"
+
 
 @unittest.skipUnless(os.environ.get("VRLBENCH_TEST_WHEEL"), "build a wheel to check installed behavior")
 class WheelRuntimeResources(unittest.TestCase):
@@ -46,8 +49,8 @@ print('installed API imports lazily')
         self.assertEqual(self.command("-c", source, no_site=True).strip(), "installed API imports lazily")
         help_text = self.command("-m", "vrlbench", "--help", no_site=True)
         self.assertIn("simulate", help_text)
-        plan = json.loads(self.command("-m", "vrlbench", "demo", "--trials", "3",
-                                       "--max-environment-steps", "15", "--plan", no_site=True))
+        plan = json.loads(self.command("-m", "vrlbench", "simulate",
+                                       "--config", str(LOCAL_CONFIG), "--plan", no_site=True))
         self.assertEqual(plan["model_calls_executed"], 0)
 
     def test_environment_import_resolves_packaged_locks_and_overlay(self):
@@ -73,14 +76,15 @@ print(json.dumps({'sdk': vrlbench.__file__, 'module': dependency.__file__,
         self.assertIn("pyserini", result["packages"])
         self.assertIn("spacy", result["packages"])
 
-    def test_installed_demo_executes_the_real_trial_loop_offline(self):
-        result = json.loads(self.command("-m", "vrlbench", "demo", "--trials", "3",
-                                        "--max-environment-steps", "15", "--output-dir", str(self.root / "demo")))
+    def test_installed_simulation_executes_local_configuration(self):
+        output = self.root / "local-feedback"
+        result = json.loads(self.command("-m", "vrlbench", "simulate",
+                                        "--config", str(LOCAL_CONFIG), "--output-dir", str(output)))
         self.assertEqual(result["status"], "complete")
-        inspection = json.loads(self.command("-m", "vrlbench", "inspect", str(self.root / "demo"),
-                                             "--case", "demo-0", "--format", "json"))
-        self.assertEqual(inspection["case"]["case_id"], "demo-0")
-        self.assertEqual(len(inspection["case"]["trials"]), 2)
+        inspection = json.loads(self.command("-m", "vrlbench", "inspect", str(output),
+                                             "--case", "case_b", "--format", "json"))
+        self.assertEqual(inspection["case"]["case_id"], "case_b")
+        self.assertEqual(len(inspection["case"]["trials"]), 3)
 
 
 if __name__ == "__main__":

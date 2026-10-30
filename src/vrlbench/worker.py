@@ -99,7 +99,7 @@ class _ClientProxy:
         return self._client
 
 
-def configure_model(model: Mapping[str, Any], *, offline_demo: bool = False,
+def configure_model(model: Mapping[str, Any], *,
                     journal: ProviderUsageJournal | None = None) -> list[dict[str, Any]]:
     """Bind a lazy, process-local transport shared by all reference calls."""
     from vrlbench.runtime import llm
@@ -133,30 +133,13 @@ def configure_model(model: Mapping[str, Any], *, offline_demo: bool = False,
     identity = []
     transport = model.get("transport")
     if transport is not None:
-        # Instantiate lazily too: the demo must not initialize a network client
-        # merely because a model configuration is present.
+        # Model configuration alone must not initialize a network client.
         from vrlbench.plugins import load_factory
 
         factory, source = load_factory(transport)
         kwargs = dict(transport.get("kwargs", {}))
         client_factory = lambda: factory(**kwargs)
         identity.append({"role": "model_transport", **source})
-    elif offline_demo:
-        def client_factory() -> Any:
-            from vrlbench.runtime.budget import TokenBudgetExceeded
-
-            class DemoModelCallsDisabled(TokenBudgetExceeded):
-                pass
-
-            def reject_call(**kwargs: Any) -> Any:
-                # The reference loop does not retry budget exceptions. Treat
-                # this deterministic example as having a zero model-call budget.
-                raise DemoModelCallsDisabled(
-                    "The synthetic demo disables model API calls; supply an explicit test transport "
-                    "or select a real task environment for a model-based memory strategy"
-                )
-
-            return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=reject_call)))
     else:
         def client_factory() -> Any:
             from openai import OpenAI
@@ -164,8 +147,7 @@ def configure_model(model: Mapping[str, Any], *, offline_demo: bool = False,
             return OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),
                           base_url=os.environ.get("OPENAI_BASE_URL"),
                           timeout=float(model.get("timeout_seconds", 120)), max_retries=0)
-    llm._client = _ClientProxy(client_factory, options,
-                              journal if transport is not None or not offline_demo else None)
+    llm._client = _ClientProxy(client_factory, options, journal)
     return identity
 
 
@@ -220,8 +202,7 @@ def execute_request(spec: Mapping[str, Any]) -> dict[str, Any]:
     for key, value in spec.get("runtime_env", {}).items():
         os.environ[str(key)] = str(value)
     try:
-        offline_demo = spec["benchmark"]["name"] == "demo" and spec["benchmark"].get("factory") is None
-        identity = configure_model(spec["model"], offline_demo=offline_demo, journal=journal)
+        identity = configure_model(spec["model"], journal=journal)
         from vrlbench.runtime import llm
 
         llm.set_context("")

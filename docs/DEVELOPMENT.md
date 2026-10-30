@@ -207,8 +207,8 @@ are recorded in the
 and [`THIRD_PARTY_NOTICES`](../THIRD_PARTY_NOTICES).
 
 VEX² makes its joint decision in one LM response, not through separate plugin
-components. The model-based methods need model calls and a task environment,
-not the scripted demo. The SDK, method loader, and CLI also accept the legacy
+components. The model-based methods need model calls and a task environment.
+The SDK, method loader, and CLI also accept the legacy
 names `dynamic_cheatsheet_adapted`, `ace_adapted`, and `dsst`, selecting the same
 implementations as the public keys.
 

@@ -18,7 +18,7 @@ HAS_RUNTIME = importlib.util.find_spec("openai") is not None
 
 class ReplayConfiguration(unittest.TestCase):
     def test_default_wire_format_stays_unchanged(self):
-        spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
+        spec = SimulationSpec(WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
                               trials=3, max_environment_steps=15, require_provider_usage=False)
         self.assertNotIn("replay_gate", spec.to_dict())
         spec = replace(spec, replay_gate=ReplayGateSpec(epsilon=.5, seed=42))
@@ -33,7 +33,7 @@ class ReplayConfiguration(unittest.TestCase):
             with self.subTest(gate=gate), self.assertRaises(ValueError):
                 gate.validate()
         spec = SimulationSpec.from_dict({
-            "workload": {"name": "demo", "cases": ["a"]}, "model": {"name": "local"},
+            "workload": {"name": "webshop", "cases": [0]}, "model": {"name": "local"},
             "trials": 3, "max_environment_steps": 15,
             "replay_gate": {"policy": "custom", "factory": {"entrypoint": "policy.py:create"}},
         }).resolved(ROOT)

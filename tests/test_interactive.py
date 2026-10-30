@@ -415,7 +415,8 @@ class InteractiveRunnerTests(unittest.TestCase):
             workload=WorkloadSpec("webarena", [{"case_id": "partial"}],
                                   factory=FactorySpec(f"{source}:make_checkpoint_backend")),
             model=ModelSpec("fixture", transport=FactorySpec(f"{source}:make_checkpoint_transport")),
-            memory=MemorySpec("trace", factory=FactorySpec("vrlbench.backends:create_demo_memory")),
+            memory=MemorySpec("trace", factory=FactorySpec(
+                f"{ROOT / 'examples/memory_strategy/initial_strategy.py'}:create_memory")),
             trials=4, max_environment_steps=1, output_dir=str(output),
             replay_gate=ReplayGateSpec(policy="epsilon", epsilon=1, seed=0),
         )

@@ -311,7 +311,7 @@ class SimulationSpec:
             raise ValueError("custom memory requires a factory or method_factory")
         if custom_factory is not None and is_reserved_memory_name(self.memory.name):
             raise ValueError("custom factories cannot override a reference method name")
-        if self.workload.factory is None and self.workload.name not in {"demo", "miniwob", "webshop", "webarena", "osworld"}:
+        if self.workload.factory is None and self.workload.name not in {"miniwob", "webshop", "webarena", "osworld"}:
             raise ValueError("a new workload requires a factory")
         if not isinstance(self.workload.cases, list) or not self.workload.cases:
             raise ValueError("workload.cases must explicitly select at least one case")
@@ -319,15 +319,13 @@ class SimulationSpec:
         if self.workload.factory is None:
             allowed_params = {"webshop": {"max_actor_steps", "capture_observations"},
                               "miniwob": {"headless", "trial_seed_mode", "capture_observations"},
-                              "demo": {"success_after"},
                               "webarena": {"observation_type", "headless", "reset_factory", "capture_observations", "judge_model"},
                               "osworld": {"env_kwargs", "pause"}}[self.workload.name]
             unknown = set(self.workload.params) - allowed_params
             if unknown:
                 raise ValueError(f"unknown {self.workload.name} params: {sorted(unknown)}")
-            for key in ("max_actor_steps", "success_after"):
-                if key in self.workload.params:
-                    _positive_integer(self.workload.params[key], f"workload.params.{key}")
+            if "max_actor_steps" in self.workload.params:
+                _positive_integer(self.workload.params["max_actor_steps"], "workload.params.max_actor_steps")
             if "headless" in self.workload.params and type(self.workload.params["headless"]) is not bool:
                 raise ValueError("headless must be a boolean")
             if "capture_observations" in self.workload.params and type(self.workload.params["capture_observations"]) is not bool:

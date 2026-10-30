@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import fields, replace
+from dataclasses import asdict, fields, replace
 import json
 import os
 from pathlib import Path
@@ -24,13 +24,17 @@ from vrlbench.evaluation import evaluate as compatible_evaluate
 from vrlbench.inspection import inspect_case
 
 
-def demo(output: Path) -> SimulationSpec:
-    return SimulationSpec(
-        workload=WorkloadSpec("demo", ["a", "b"]),
-        model=ModelSpec("scripted-local"),
-        memory=MemorySpec("trace", FactorySpec("vrlbench.backends:create_demo_memory")),
-        trials=3, max_environment_steps=15, output_dir=str(output), require_provider_usage=False,
+def local_workload(cases: list[str]) -> WorkloadSpec:
+    return WorkloadSpec(
+        "teaching_route_control",
+        [{"case_id": case, "target": "blue"} for case in cases],
+        factory=FactorySpec(f"{ROOT / 'examples/memory_study/fixture.py'}:create_backend"),
     )
+
+
+def local_run(output: Path) -> SimulationSpec:
+    spec = SimulationSpec.from_path(ROOT / "examples/configs/local_feedback.json")
+    return replace(spec, workload=local_workload(["a", "b"]), output_dir=str(output))
 
 
 class SimulationInputs(unittest.TestCase):
@@ -45,10 +49,10 @@ class SimulationInputs(unittest.TestCase):
         self.assertNotIn("benchmark", {field.name for field in fields(SimulationSpec)})
 
     def test_canonical_and_old_construction_produce_one_stable_wire_format(self):
-        workload, model = WorkloadSpec("demo", ["a"]), ModelSpec("scripted")
-        current = SimulationSpec(workload=workload, model=model, trials=6, max_environment_steps=15)
-        previous = EvaluationSpec(benchmark=workload, model=model, trials=6, max_environment_steps=15)
-        positional = EvaluationSpec(workload, model, trials=6, max_environment_steps=15)
+        workload, model = local_workload(["a"]), ModelSpec("scripted")
+        current = SimulationSpec(workload=workload, model=model, trials=6, max_environment_steps=1)
+        previous = EvaluationSpec(benchmark=workload, model=model, trials=6, max_environment_steps=1)
+        positional = EvaluationSpec(workload, model, trials=6, max_environment_steps=1)
         self.assertEqual(current, previous)
         self.assertEqual(current, positional)
         self.assertIs(current.workload, current.benchmark)
@@ -56,13 +60,13 @@ class SimulationInputs(unittest.TestCase):
         self.assertIn("benchmark", current.to_dict())
         self.assertNotIn("workload", current.to_dict())
         self.assertEqual(replace(current, trials=2).trials, 2)
-        replacement = WorkloadSpec("demo", ["new-case"])
+        replacement = local_workload(["new-case"])
         self.assertEqual(replace(previous, workload=replacement).benchmark, replacement)
         with self.assertRaisesRegex(TypeError, "not both"):
-            SimulationSpec(workload=workload, benchmark=workload, model=model, trials=6, max_environment_steps=15)
+            SimulationSpec(workload=workload, benchmark=workload, model=model, trials=6, max_environment_steps=1)
 
     def test_new_and_old_json_inputs_roundtrip_to_same_spec(self):
-        previous = demo(Path("runs/example")).to_dict()
+        previous = local_run(Path("runs/example")).to_dict()
         current = dict(previous)
         current["workload"] = current.pop("benchmark")
         self.assertEqual(SimulationSpec.from_dict(current), EvaluationSpec.from_dict(previous))
@@ -73,16 +77,16 @@ class SimulationInputs(unittest.TestCase):
                 SimulationSpec.from_dict(config)
 
     def test_execution_budgets_are_explicit_and_validated_before_execution(self):
-        workload, model = WorkloadSpec("demo", ["a"]), ModelSpec("scripted")
-        for budgets in ({}, {"trials": 6}, {"max_environment_steps": 15}):
+        workload, model = local_workload(["a"]), ModelSpec("scripted")
+        for budgets in ({}, {"trials": 6}, {"max_environment_steps": 1}):
             with self.subTest(sdk_budgets=budgets), self.assertRaises(TypeError):
                 SimulationSpec(workload, model, **budgets)
         for key in ("workload", "benchmark"):
-            config = {key: {"name": "demo", "cases": ["a"]},
+            config = {key: asdict(workload),
                       "model": {"name": "scripted"}, "require_provider_usage": False,
-                      "trials": 4, "max_environment_steps": 3}
+                      "trials": 4, "max_environment_steps": 1}
             spec = SimulationSpec.from_dict(config)
-            self.assertEqual(plan(spec)["config"]["max_environment_steps"], 3)
+            self.assertEqual(plan(spec)["config"]["max_environment_steps"], 1)
             self.assertEqual(SimulationSpec.from_dict(spec.to_dict()), spec)
             for name in ("trials", "max_environment_steps"):
                 missing = dict(config)
@@ -103,8 +107,8 @@ class SimulationInputs(unittest.TestCase):
                 for name in dict.fromkeys((public, legacy.get(public, public))):
                     with self.subTest(name=name):
                         self.assertEqual(load_method(name).name, public)
-                        spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                                              MemorySpec(name), trials=6, max_environment_steps=15, output_dir=str(output),
+                        spec = SimulationSpec(local_workload(["a"]), ModelSpec("scripted"),
+                                              MemorySpec(name), trials=6, max_environment_steps=1, output_dir=str(output),
                                               require_provider_usage=False)
                         spec.validate()
                         wire = spec.to_dict()
@@ -124,8 +128,8 @@ class SimulationInputs(unittest.TestCase):
             for name in ("none", "dc-cu", "DC-Cu*", "ACE*", "VEX²", "Reflexion"):
                 with self.subTest(presentation_alias=name):
                     load_method(name)
-                    spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                                          MemorySpec(name), trials=6, max_environment_steps=15, output_dir=str(output),
+                    spec = SimulationSpec(local_workload(["a"]), ModelSpec("scripted"),
+                                          MemorySpec(name), trials=6, max_environment_steps=1, output_dir=str(output),
                                           require_provider_usage=False)
                     with self.assertRaises(ValueError):
                         spec.validate()
@@ -136,7 +140,7 @@ class SimulationInputs(unittest.TestCase):
             root = Path(directory).resolve()
             plugin = root / "candidate.py"
             plugin.write_text("raise RuntimeError('planning imported the candidate')\n")
-            value = demo(Path("runs/planned")).to_dict()
+            value = local_run(Path("runs/planned")).to_dict()
             value["workload"] = value.pop("benchmark")
             value["memory"]["factory"]["entrypoint"] = "candidate.py:create_memory"
             path = root / "simulation.json"
@@ -178,7 +182,7 @@ class SimulationProcess(unittest.TestCase):
         self.assertEqual(simulate.__module__, "vrlbench.simulation")
         environment = dict(os.environ)
         with patch("vrlbench.simulation.subprocess.Popen", wraps=subprocess.Popen) as process:
-            result = simulate(demo(self.root / "simulation")).require_complete()
+            result = simulate(local_run(self.root / "simulation")).require_complete()
         self.assertEqual(process.call_count, 1)
         self.assertIs(type(result), SimulationResult)
         self.assertEqual(result.counts["completed"], 2)
@@ -189,14 +193,14 @@ class SimulationProcess(unittest.TestCase):
             first, second = case["trials"]
             self.assertEqual(first["context"], "")
             self.assertFalse(first["success"])
-            self.assertIn(first["trajectory"], second["context"])
+            self.assertIn(json.loads(first["trajectory"])["action"], second["context"])
             self.assertTrue(second["success"])
         recorded = inspect_case(result, "a")["case"]["trials"]
         self.assertEqual(recorded[1]["context"], result.cases[0]["trials"][1]["context"])
         self.assertTrue((self.root / "simulation/evaluation.json").is_file())
 
     def test_result_system_views_share_records_without_mutation(self):
-        result = simulate(demo(self.root / "views")).require_complete()
+        result = simulate(local_run(self.root / "views")).require_complete()
         snapshot = result.to_dict()
         self.assertEqual(result.workload, snapshot["config"]["benchmark"])
         self.assertEqual(result.memory, snapshot["config"]["memory"])
@@ -217,7 +221,7 @@ class SimulationProcess(unittest.TestCase):
                               cwd=self.root, env=env, text=True, capture_output=True, check=True)
 
     def test_cli_simulate_and_evaluate_alias_execute_same_process_then_inspect(self):
-        config = demo(self.root / "configured").to_dict()
+        config = local_run(self.root / "configured").to_dict()
         config["workload"] = config.pop("benchmark")
         path = self.root / "simulation.json"
         path.write_text(json.dumps(config))
@@ -229,11 +233,12 @@ class SimulationProcess(unittest.TestCase):
         self.assertEqual(current["metrics"], previous["metrics"])
         view = json.loads(self.command("inspect", str(self.root / "current"),
                                        "--case", "a", "--format", "json").stdout)
-        self.assertIn("FAIL", view["case"]["trials"][1]["context"])
+        self.assertIn(json.loads(view["case"]["trials"][0]["trajectory"])["action"],
+                      view["case"]["trials"][1]["context"])
         self.assertTrue(view["case"]["trials"][1]["success"])
 
-    def test_cli_plan_remains_nonexecuting_and_demo_uses_simulation_core(self):
-        config = demo(self.root / "never").to_dict()
+    def test_cli_plan_remains_nonexecuting_and_local_example_uses_simulation_core(self):
+        config = local_run(self.root / "never").to_dict()
         config["workload"] = config.pop("benchmark")
         plugin = self.root / "forbidden.py"
         plugin.write_text("raise RuntimeError('must not import for planning')\n")
@@ -243,14 +248,16 @@ class SimulationProcess(unittest.TestCase):
         planned = json.loads(self.command("simulate", "--config", str(path), "--plan").stdout)
         self.assertEqual(planned["model_calls_executed"], 0)
         self.assertFalse((self.root / "never").exists())
-        output = json.loads(self.command("demo", "--trials", "3", "--max-environment-steps", "15", "--output-dir", str(self.root / "demo")).stdout)
+        output = json.loads(self.command("simulate", "--config",
+                                         str(ROOT / "examples/configs/local_feedback.json"),
+                                         "--output-dir", str(self.root / "local")).stdout)
         self.assertEqual(output["status"], "complete")
         self.assertEqual(output["counts"]["recovered"], 2)
 
     def test_cli_json_plans_accept_public_and_legacy_method_identifiers(self):
         for name in (*list_methods(), "dynamic_cheatsheet_adapted", "ace_adapted", "dsst"):
-            config = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                                    MemorySpec(name), trials=6, max_environment_steps=15, output_dir=str(self.root / "never"),
+            config = SimulationSpec(local_workload(["a"]), ModelSpec("scripted"),
+                                    MemorySpec(name), trials=6, max_environment_steps=1, output_dir=str(self.root / "never"),
                                     require_provider_usage=False).to_dict()
             config["workload"] = config.pop("benchmark")
             path = self.root / "method.json"

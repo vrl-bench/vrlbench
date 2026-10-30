@@ -43,15 +43,19 @@ class PluginExecutionTests(unittest.TestCase):
         marker = self.root / "imported"
         self.write("local_memory.py", f"""
             from pathlib import Path
-            from vrlbench.backends import create_demo_memory
+            from vrlbench.plugins import load_factory
             Path({str(marker)!r}).write_text('worker imported plugin')
             def create():
-                return create_demo_memory()
+                factory, _ = load_factory({{"entrypoint": {str(ROOT / "examples/memory_study/fixture.py") + ":create_memory"!r}}})
+                return factory()
         """)
         spec = SimulationSpec(
-            WorkloadSpec("demo", ["case"]), ModelSpec("offline"),
+            WorkloadSpec("teaching_route_control", [{"case_id": "case", "target": "blue"}],
+                         factory=FactorySpec(f"{ROOT / 'examples/memory_study/fixture.py'}:create_backend")),
+            ModelSpec("offline", transport=FactorySpec(
+                f"{ROOT / 'examples/memory_study/fixture.py'}:create_no_model_client")),
             MemorySpec("local_memory", factory=FactorySpec("local_memory:create")),
-            trials=2, max_environment_steps=15, output_dir=str(self.root / "module-run"), require_provider_usage=False,
+            trials=2, max_environment_steps=1, output_dir=str(self.root / "module-run"), require_provider_usage=False,
         )
         with patch.object(sys, "path", [str(self.root), *sys.path]):
             self.assertEqual(plan(spec)["model_calls_executed"], 0)
@@ -107,15 +111,15 @@ class PluginExecutionTests(unittest.TestCase):
         """)
         memory = self.write("memory/candidate.py", """
             from settings import VALUE
-            from vrlbench.backends import create_demo_memory
             def create():
-                return create_demo_memory()
+                raise AssertionError('the conflicting memory must not be initialized')
         """)
         spec = SimulationSpec(
-            WorkloadSpec("demo", ["case"]),
+            WorkloadSpec("teaching_route_control", [{"case_id": "case", "target": "blue"}],
+                         factory=FactorySpec(f"{ROOT / 'examples/memory_study/fixture.py'}:create_backend")),
             ModelSpec("offline", transport=FactorySpec(f"{transport}:create")),
             MemorySpec("custom", factory=FactorySpec(f"{memory}:create")),
-            trials=2, max_environment_steps=15, output_dir=str(self.root / "conflict-run"), require_provider_usage=False,
+            trials=2, max_environment_steps=1, output_dir=str(self.root / "conflict-run"), require_provider_usage=False,
         )
         result = simulate(spec)
         self.assertEqual(result.status, "failed")

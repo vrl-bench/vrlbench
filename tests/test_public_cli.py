@@ -12,6 +12,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+LOCAL_CONFIG = ROOT / "examples/configs/local_feedback.json"
 
 
 class PublicCLI(unittest.TestCase):
@@ -24,15 +25,12 @@ class PublicCLI(unittest.TestCase):
             cwd=ROOT, env=env, text=True,
         )
 
-    def test_help_and_demo_plan_without_optional_dependencies(self):
+    def test_help_without_optional_dependencies(self):
         output = self.command("--help", no_site=True)
         self.assertIn("simulate", output)
         self.assertIn("inspect", output)
         self.assertIn("compare", output)
-        self.assertIn("demo", output)
-        plan = json.loads(self.command("demo", "--trials", "3", "--max-environment-steps", "15", "--plan", no_site=True))
-        self.assertEqual(plan["model_calls_executed"], 0)
-        self.assertEqual(plan["config"]["trials"], 3)
+        self.assertIn("replay", output)
 
     def test_simulation_plan_does_not_import_or_execute_plugins(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -55,9 +53,10 @@ class PublicCLI(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output = root / "never-created"
-            config = {"workload": {"name": "demo", "cases": ["a"]},
-                      "model": {"name": "scripted"}, "trials": 3,
-                      "max_environment_steps": 15, "output_dir": str(output)}
+            config = json.loads(self.command(
+                "simulate", "--config", str(LOCAL_CONFIG), "--plan", no_site=True,
+            ))["config"]
+            config["output_dir"] = str(output)
             env = dict(os.environ, PYTHONPATH=str(ROOT / "src"),
                        PYTHONDONTWRITEBYTECODE="1")
             for field in ("trials", "max_environment_steps"):
@@ -75,8 +74,8 @@ class PublicCLI(unittest.TestCase):
                 self.assertNotIn("Traceback", result.stderr)
                 self.assertFalse(output.exists())
 
-    def test_paper_specific_commands_are_not_public_cli_commands(self):
-        for name in ("results", "plan", "run", "reproduce"):
+    def test_unsupported_commands_are_rejected(self):
+        for name in ("demo", "results", "plan", "run", "reproduce"):
             with self.subTest(command=name):
                 result = subprocess.run(
                     [sys.executable, "-S", "-m", "vrlbench", name],
@@ -110,14 +109,15 @@ print("checkout statistics API imports without analysis dependencies")
         self.assertEqual(output.strip(), "checkout statistics API imports without analysis dependencies")
 
     @unittest.skipUnless(importlib.util.find_spec("openai"), "install [runtime] to execute the offline loop")
-    def test_demo_and_inspection_use_recorded_run(self):
+    def test_simulation_and_inspection_use_recorded_run(self):
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "demo"
-            result = json.loads(self.command("demo", "--trials", "3", "--max-environment-steps", "15", "--output-dir", str(output)))
+            output = Path(directory) / "local-feedback"
+            result = json.loads(self.command("simulate", "--config", str(LOCAL_CONFIG),
+                                             "--output-dir", str(output)))
             self.assertEqual(result["status"], "complete")
-            inspection = json.loads(self.command("inspect", str(output), "--case", "demo-0", "--format", "json"))
-            self.assertEqual(inspection["case"]["case_id"], "demo-0")
-            self.assertEqual(len(inspection["case"]["trials"]), 2)
+            inspection = json.loads(self.command("inspect", str(output), "--case", "case_b", "--format", "json"))
+            self.assertEqual(inspection["case"]["case_id"], "case_b")
+            self.assertEqual(len(inspection["case"]["trials"]), 3)
 
 
 if __name__ == "__main__":

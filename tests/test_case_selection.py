@@ -1,7 +1,6 @@
 """Order-independent built-in case selections, with other settings kept strict."""
 
 from dataclasses import replace
-import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -12,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from vrlbench import FactorySpec, MemorySpec, ModelSpec, SimulationSpec, WorkloadSpec
-from vrlbench import aggregate_cases, compare_results, plan, simulate
+from vrlbench import aggregate_cases, compare_results, plan
 from vrlbench.results import SimulationResult
 
 
@@ -28,24 +27,6 @@ def recorded_fixture(spec):
 
 
 class CaseSelectionCompatibility(unittest.TestCase):
-    @unittest.skipUnless(importlib.util.find_spec("openai"), "install [runtime] for the offline trial loop")
-    def test_actual_builtin_simulations_compare_after_case_reordering(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            spec = SimulationSpec(
-                WorkloadSpec("demo", ["a", "b"]), ModelSpec("scripted-local"),
-                MemorySpec("local_trace", factory=FactorySpec("vrlbench.backends:create_demo_memory")),
-                trials=3, max_environment_steps=15, output_dir=str(root / "first"), require_provider_usage=False,
-            )
-            first = simulate(spec).require_complete()
-            second = simulate(replace(spec, workload=replace(spec.workload, cases=["b", "a"]),
-                                      output_dir=str(root / "second"))).require_complete()
-            before = second.to_dict()
-            compared = compare_results([first, second])
-            self.assertEqual(compared["paired_effects"][0]["sr_difference_pp"], 0)
-            self.assertEqual(compared["paired_effects"][0]["tied_pairs"], 2)
-            self.assertEqual(second.to_dict(), before)
-
     def test_native_shared_first_trial_plan_accepts_reordered_selection(self):
         selections = {
             "webshop": [0, 1],
@@ -85,13 +66,13 @@ class CaseSelectionCompatibility(unittest.TestCase):
                     plan(replace(target, shared_t1_dir=str(root)))
 
     def test_other_model_environment_and_credential_settings_remain_strict(self):
-        source = SimulationSpec(WorkloadSpec("demo", ["a", "b"]), ModelSpec("fixture"),
+        source = SimulationSpec(WorkloadSpec("webshop", [0, 1]), ModelSpec("fixture"),
                                 trials=6, max_environment_steps=15, require_provider_usage=False)
         variants = [
             replace(source, model=replace(source.model, name="other-model")),
             replace(source, model=replace(source.model, api_key_env="OTHER_API_KEY")),
             replace(source, runtime_env={"TASK_MODE": "other"}),
-            replace(source, workload=replace(source.workload, params={"success_after": 2})),
+            replace(source, workload=replace(source.workload, params={"max_actor_steps": 2})),
             replace(source, max_environment_steps=16),
         ]
         for target in variants:

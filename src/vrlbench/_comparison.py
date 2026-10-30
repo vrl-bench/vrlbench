@@ -16,7 +16,7 @@ def comparable_workload(value: Any) -> Any:
     """
     normalized = deepcopy(value)
     if (not isinstance(value, Mapping) or value.get("factory") is not None
-            or value.get("name") not in {"demo", "miniwob", "webshop"}
+            or value.get("name") not in {"miniwob", "webshop"}
             or not isinstance(value.get("cases"), list)):
         return normalized
     normalized = dict(normalized)

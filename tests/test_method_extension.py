@@ -47,9 +47,6 @@ class Method(MemoryMethod):
         if self.mode == "wrong_context": return "not ActorContext"
         if self.mode == "first_memory": return ActorContext(system="unshared first memory")
         if self.mode == "user" and index: return ActorContext(user="must not be dropped")
-        if self.mode == "model" and index:
-            from vrlbench.runtime.llm import complete
-            complete("must stay offline", model="scripted")
         return ActorContext(system=RAW if index else "")
     def observe_trial(self, record):
         self.records.append(asdict(record))
@@ -127,7 +124,7 @@ def create_webshop_backend(): return WebShopBackend()
 
 class MethodConfigurationTests(unittest.TestCase):
     def test_old_wire_is_unchanged(self):
-        spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
+        spec = SimulationSpec(WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
                               trials=3, max_environment_steps=15)
         self.assertEqual(spec.to_dict()["memory"], {"name": "retry", "factory": None})
 
@@ -137,7 +134,7 @@ class MethodConfigurationTests(unittest.TestCase):
             plugin = root / "method.py"
             plugin.write_text("def create(): return None\n")
             spec = SimulationSpec(
-                WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
+                WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
                 MemorySpec("example", method_factory=FactorySpec("method.py:create")),
                 trials=3, max_environment_steps=15, require_provider_usage=False,
             )
@@ -146,7 +143,7 @@ class MethodConfigurationTests(unittest.TestCase):
             restored = SimulationSpec.from_path(source)
             restored.validate()
             self.assertEqual(restored.memory.method_factory.entrypoint, f"{plugin.resolve()}:create")
-            both = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
+            both = SimulationSpec(WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
                 MemorySpec("example", FactorySpec(f"{plugin}:create"), FactorySpec(f"{plugin}:create")),
                 trials=3, max_environment_steps=15)
             with self.assertRaisesRegex(ValueError, "not both"):
@@ -156,7 +153,7 @@ class MethodConfigurationTests(unittest.TestCase):
                          "DYNAMIC-CHEATSHEET-ADAPTED", "VEX2", "none"):
                 for field in ("factory", "method_factory"):
                     with self.subTest(name=name, field=field):
-                        builtin = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
+                        builtin = SimulationSpec(WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
                             MemorySpec(name, **{field: FactorySpec(f"{plugin}:create")}),
                             trials=3, max_environment_steps=15)
                         with self.assertRaisesRegex(ValueError, "override"):
@@ -194,7 +191,8 @@ class WholeMethodWorkerTests(unittest.TestCase):
         return SimulationSpec(
             WorkloadSpec("custom", ["first", "second"] if cases is None else cases,
                 params=params or {}, factory=FactorySpec(f"{self.plugin}:create_backend")),
-            ModelSpec("scripted"),
+            ModelSpec("scripted", transport=FactorySpec(
+                f"{ROOT}/examples/memory_study/fixture.py:create_no_model_client")),
             MemorySpec("joint_method", method_factory=FactorySpec(
                 f"{self.plugin}:create_method", {"log": str(self.log), "mode": mode})),
             trials=total, max_environment_steps=15, output_dir=str(self.root / f"run-{self.counter}"),
@@ -236,7 +234,8 @@ class WholeMethodWorkerTests(unittest.TestCase):
             self.assertNotIn("private Actor", records[0]["trajectory"])
         contexts = [row for row in self.events() if row["kind"] == "context"]
         self.assertEqual([row["index"] for row in contexts], [0, 1, 0, 1])
-        self.assertEqual(result["identity"]["plugins"][0]["role"], "memory_method")
+        roles = [identity["role"] for identity in result["identity"]["plugins"]]
+        self.assertEqual(roles.count("memory_method"), 1)
 
     def test_success_stops_and_final_failure_keeps_its_executed_trace(self):
         for after in (1, 20):
@@ -398,17 +397,6 @@ class WholeMethodWorkerTests(unittest.TestCase):
         self.assertEqual(reset["config"]["metadata"]["benchmark"], "webshop")
         self.assertEqual(reset["config"]["metadata"]["sample_index"], 0)
         self.assertEqual(reset["config"]["environment_rules"], reset["config"]["metadata"]["basic_environment_rules"])
-
-    def test_demo_allows_a_no_model_whole_method_but_disables_model_calls(self):
-        for mode, status in (("normal", 0), ("model", 1)):
-            request = self.request(mode=mode, cases=[mode])
-            request["benchmark"] = {"name": "demo", "cases": [mode], "params": {}, "factory": None}
-            command, result = self.run_worker(request)
-            self.assertEqual(command.returncode, status, result)
-            if status:
-                self.assertEqual(result["error"]["type"], "DemoModelCallsDisabled")
-            else:
-                self.assertEqual(result["cases"][0]["trials"][1]["system_context"], RAW_CONTEXT)
 
 
 if __name__ == "__main__":

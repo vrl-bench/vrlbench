@@ -24,9 +24,13 @@ INVALID_COUNTS = (True, False, None, 0, -1, 2, 1.0, "1", [], {})
 
 
 def make_spec(options, **kwargs):
-    return SimulationSpec(WorkloadSpec("demo", ["case"]),
-                          ModelSpec("scripted", request_options=options),
-                          trials=6, max_environment_steps=15, **kwargs)
+    fixture = ROOT / "examples/memory_study/fixture.py"
+    return SimulationSpec(
+        WorkloadSpec("teaching_route_control", [{"case_id": "case", "target": "blue"}],
+                     factory=FactorySpec(f"{fixture}:create_backend")),
+        ModelSpec("scripted", request_options=options,
+                  transport=FactorySpec(f"{fixture}:create_no_model_client")),
+        trials=6, max_environment_steps=1, **kwargs)
 
 
 class SingleCompletionValidationTests(unittest.TestCase):

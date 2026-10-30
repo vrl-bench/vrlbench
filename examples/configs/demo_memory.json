@@ -1,9 +1,0 @@
-{
-  "workload": {"name": "demo", "cases": ["demo-0", "demo-1"]},
-  "memory": {"name": "recent_trace", "factory": {"entrypoint": "../memory_strategy/initial_strategy.py:create_memory"}},
-  "model": {"name": "scripted-local"},
-  "trials": 3,
-  "max_environment_steps": 15,
-  "require_provider_usage": false,
-  "output_dir": "../../runs/demo_memory"
-}

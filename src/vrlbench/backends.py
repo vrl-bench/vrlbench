@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager, ExitStack
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import importlib
 import json
 from pathlib import Path
@@ -320,26 +320,6 @@ class BackendRuntime:
         return run_reference(self.spec, self.er_name, self.controller)
 
 
-def create_demo_memory() -> Any:
-    """Return a no-model trace memory for exercising the real loop, not fitness."""
-    from vrlbench.runtime.er.base import ERSlot
-
-    class TraceMemory(ERSlot):
-        def __init__(self) -> None:
-            self.reset()
-
-        def reset(self) -> None:
-            self.failures: list[str] = []
-
-        def on_failure(self, trajectory: str, model: str) -> None:
-            self.failures.append(trajectory)
-
-        def build_section(self) -> str:
-            return "\n\n".join(self.failures)
-
-    return TraceMemory()
-
-
 def register_memory(spec: Mapping[str, Any], *, native_rules: bool = False) -> tuple[str, str, list[dict[str, Any]]]:
     """Bind one candidate factory in this worker, never in the caller process."""
     from vrlbench.runtime.er import _SLOTS
@@ -544,49 +524,6 @@ def _require_finished(output: Path) -> None:
         raise RuntimeError("The benchmark runner reported infrastructure failures")
 
 
-def run_demo(spec: Mapping[str, Any], er_name: str, controller: str) -> list[dict[str, Any]]:
-    """Exercise the real trial loop with a deterministic, non-performance task."""
-    from vrlbench.runtime import llm
-    if controller != "none" and controller not in _METHOD_FACTORIES:
-        raise ValueError("The deterministic demo supports memory slots, not model-based schedulers")
-    if er_name in {"reflexion", "dynamic_cheatsheet_adapted", "ace_adapted"}:
-        raise ValueError("Reference model-based memory methods require MiniWoB or WebShop, not the demo")
-    params = dict(spec["benchmark"].get("params", {}))
-    unknown = set(params) - {"success_after"}
-    if unknown:
-        raise ValueError(f"Unknown demo parameters: {sorted(unknown)}")
-    success_after = params.get("success_after", 2)
-    if type(success_after) is not int or success_after < 1:
-        raise ValueError("demo.success_after must be a positive integer")
-    output = []
-    for case in spec["benchmark"]["cases"]:
-        class ScriptedActor:
-            trial_index = -1
-
-            def set_trial_context(self, *, trial_index: int, total_trials: int) -> dict[str, Any]:
-                self.trial_index = trial_index
-                return {"synthetic_demo": True, "task_performance_evaluated": False,
-                        "environment_steps": 1, "max_environment_steps": spec["max_environment_steps"]}
-
-            def __call__(self) -> str:
-                # Reading both channels exercises actual memory injection even
-                # though the scripted outcome deliberately is not a fitness.
-                _ = llm.get_context(), llm.get_user_context()
-                outcome = "SUCCESS" if self.trial_index + 1 >= success_after else "FAIL"
-                return f"Synthetic case {case}; trial {self.trial_index + 1}; Action: scripted step; Observation: {outcome}"
-
-        runtime = BackendRuntime(spec=spec, er_name=er_name, controller=controller)
-        episode = runtime.run_episode(
-            ScriptedActor(), lambda trace: trace.endswith("SUCCESS"),
-            metadata={"benchmark": "demo", "task": str(case)},
-        )
-        case_id = str(case["case_id"]) if isinstance(case, dict) else str(case)
-        output.append({"case_id": case_id, "task": "synthetic_demo",
-                       "trials": [asdict(trial) for trial in episode.trials],
-                       "resource_usage": episode.resource_usage})
-    return output
-
-
 def run_backend(spec: Mapping[str, Any], er_name: str, controller: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     benchmark = spec["benchmark"]
     factory_spec = benchmark.get("factory")
@@ -597,8 +534,6 @@ def run_backend(spec: Mapping[str, Any], er_name: str, controller: str) -> tuple
             raise TypeError("A benchmark factory must return an object with run(spec, runtime)")
         runtime = BackendRuntime(spec=spec, er_name=er_name, controller=controller)
         return method(dict(spec), runtime), [{"role": "benchmark", **identity}]
-    if benchmark["name"] == "demo":
-        return run_demo(spec, er_name, controller), []
     if benchmark["name"] == "webarena":
         from .environments.webarena import run
         return run(spec, BackendRuntime(spec, er_name, controller)), []
