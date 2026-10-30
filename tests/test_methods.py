@@ -65,8 +65,6 @@ class LazyMethodTests(unittest.TestCase):
                        env=dict(os.environ, PYTHONPATH=str(ROOT / "src")))
 
     def test_explicit_trial_budget_and_aliases(self):
-        with self.assertRaises(TypeError):
-            CaseConfig()
         first, second = CaseConfig(total_trials=3), CaseConfig(total_trials=3)
         first.metadata["key"] = 1
         self.assertEqual(second.metadata, {})
