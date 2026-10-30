@@ -88,10 +88,8 @@ class SimulationInputs(unittest.TestCase):
                 missing = dict(config)
                 del missing[name]
                 with self.subTest(key=key, missing=name):
-                    with patch("vrlbench.simulation.subprocess.Popen") as process:
-                        with self.assertRaisesRegex(ValueError, name):
-                            plan(SimulationSpec.from_dict(missing))
-                    process.assert_not_called()
+                    with self.assertRaisesRegex(ValueError, name):
+                        SimulationSpec.from_dict(missing)
                 for bad in (None, True, 0, -1, 1.5):
                     with self.subTest(key=key, field=name, invalid=bad):
                         with self.assertRaisesRegex(ValueError, name):
