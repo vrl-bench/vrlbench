@@ -126,7 +126,7 @@ class ProviderJournalWorkerTests(unittest.TestCase):
                 f"{self.plugin}:create_backend", {"mode": mode})),
             ModelSpec("scripted", transport=FactorySpec(
                 f"{self.plugin}:create_client", {"mode": mode})),
-            MemorySpec("retry"), trials=2, output_dir=str(self.root / mode),
+            MemorySpec("retry"), trials=2, max_environment_steps=15, output_dir=str(self.root / mode),
             timeout_seconds=4 if mode == "timeout" else 20,
         ))
 

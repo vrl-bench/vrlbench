@@ -21,7 +21,7 @@ from ._method_names import METHOD_NAMES, canonical_method_name, reference_method
 class CaseConfig:
     """Per-case limits and public information; trial indices start at zero."""
 
-    total_trials: int = 6
+    total_trials: int
     model: str = "gpt-4o-mini"
     task_scope: str = ""
     environment_rules: str = ""

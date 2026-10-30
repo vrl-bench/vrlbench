@@ -20,7 +20,7 @@ def demo(output: Path, **kwargs) -> EvaluationSpec:
     return EvaluationSpec(benchmark=BenchmarkSpec("demo", ["a", "b"]),
                           model=ModelSpec("scripted-local"),
                           memory=MemorySpec("trace", FactorySpec("vrlbench.backends:create_demo_memory")),
-                          trials=3, output_dir=str(output), require_provider_usage=False, **kwargs)
+                          trials=3, max_environment_steps=15, output_dir=str(output), require_provider_usage=False, **kwargs)
 
 
 class PublicEvaluation(unittest.TestCase):

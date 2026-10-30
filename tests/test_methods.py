@@ -57,15 +57,17 @@ class LazyMethodTests(unittest.TestCase):
             "'list_methods','load_method','render_trajectory'); "
             "assert all(hasattr(vrlbench, name) for name in names); "
             "assert vrlbench.ActorContext().system == ''; "
-            "assert vrlbench.CaseConfig().total_trials == 6; "
+            "assert vrlbench.CaseConfig(total_trials=3).total_trials == 3; "
             "[vrlbench.load_method(n) for n in vrlbench.list_methods()]; "
             "assert 'vrlbench.runtime' not in sys.modules; assert 'openai' not in sys.modules"
         )
         subprocess.run([sys.executable, "-c", source], check=True, cwd=ROOT,
                        env=dict(os.environ, PYTHONPATH=str(ROOT / "src")))
 
-    def test_configuration_defaults_and_aliases(self):
-        first, second = CaseConfig(), CaseConfig()
+    def test_explicit_trial_budget_and_aliases(self):
+        with self.assertRaises(TypeError):
+            CaseConfig()
+        first, second = CaseConfig(total_trials=3), CaseConfig(total_trials=3)
         first.metadata["key"] = 1
         self.assertEqual(second.metadata, {})
         self.assertEqual(ActorContext(), ActorContext("", ""))
@@ -90,13 +92,13 @@ class MethodTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             make_controller("lightweight_vex")
         with self.assertRaises(ValueError):
-            VEX2(controller="lightweight_vex")
+            VEX2(trials=3, controller="lightweight_vex")
         self.assertIsNone(make_controller("none"))
         self.assertEqual(make_controller("dsst").method_id, "dsst")
         with self.assertRaisesRegex(ValueError, "gold or oracle"):
-            VEX2(allow_gold_feedback=True).run(actor=lambda: "", manager=lambda _: False)
+            VEX2(trials=3, allow_gold_feedback=True).run(actor=lambda: "", manager=lambda _: False)
         with self.assertRaisesRegex(ValueError, "requires er='none'"):
-            VEX2(er="reflexion").run(actor=lambda: "", manager=lambda _: False)
+            VEX2(trials=3, er="reflexion").run(actor=lambda: "", manager=lambda _: False)
         self.assertFalse(any(name.startswith("vrlbench.runtime.scheduling") or
                              name in {"vrlbench.runtime.er.per", "vrlbench.runtime.er.her",
                                       "vrlbench.runtime.controllers.integrated"}
@@ -150,7 +152,7 @@ class MethodTests(unittest.TestCase):
     def test_reflexion_explicit_benchmark_and_native_miniwob_trace(self):
         method = load_method("reflexion", client=FakeClient())
         with self.assertRaisesRegex(ValueError, "explicit benchmark"):
-            method.reset_case(CaseConfig())
+            method.reset_case(CaseConfig(total_trials=3))
         method, client = self.method("reflexion", "Native reflection",
                                      metadata={"benchmark": "miniwob"})
         with self.assertRaisesRegex(ValueError, "source-native Actor"):
@@ -211,7 +213,7 @@ class MethodTests(unittest.TestCase):
                 self.assertEqual(client.calls, [])
                 with self.assertRaises(RuntimeError):
                     method.context_for_trial(1)
-                method.reset_case(CaseConfig(metadata={"benchmark": "webshop"},
+                method.reset_case(CaseConfig(total_trials=3, metadata={"benchmark": "webshop"},
                                              environment_rules="Click visible controls only."))
                 self.assertEqual(method.context_for_trial(0), ActorContext())
                 self.assertEqual(method.snapshot()["history"], [])
@@ -293,14 +295,14 @@ class MethodTests(unittest.TestCase):
         try:
             llm._client = worker
             with patch.object(llm, "OpenAI", return_value=own) as create:
-                method.reset_case(CaseConfig())
+                method.reset_case(CaseConfig(total_trials=3))
                 method.context_for_trial(0)
                 create.assert_not_called()
                 self.failure(method)
                 self.assertIs(llm._client, worker)
                 self.failure(method, 1)
                 self.assertEqual(create.call_count, 1)
-                method.reset_case(CaseConfig())
+                method.reset_case(CaseConfig(total_trials=3))
                 ledger = TokenUsageLedger(require_provider_usage=True)
                 with llm.token_budget_scope(ledger):
                     self.failure(method)

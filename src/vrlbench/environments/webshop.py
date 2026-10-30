@@ -20,7 +20,6 @@ from vrlbench.runtime.metrics import atomic_write_json, completion_metrics, per_
 from vrlbench.runtime.shared_t1 import validate_actor_only_t1_usage, validate_shared_t1_environment_accounting, validate_shared_t1_source
 from vrlbench.environments.webshop_dependency import WEBSHOP_FULL_DATA_FILES, WEBSHOP_OFFICIAL_TEST_GOAL_END, WEBSHOP_OFFICIAL_TEST_GOAL_START, webshop_observed_dependency_contract
 logger = logging.getLogger(__name__)
-DEFAULT_MAX_STEPS = 15
 WEBSHOP_ACTION_PATTERN = '(?:search|click)\\[(?!\\s)(?![^\\]\\r\\n]*\\s\\])[^\\]\\r\\n]+\\]'
 DEFAULT_WEBSHOP_ROOT = Path(os.environ['WEBSHOP_ROOT']).expanduser() if os.environ.get('WEBSHOP_ROOT', '').strip() else None
 REFLEXION_ACTION_DEMONSTRATION_SOURCE = 'reflexion-original/webshop_runs/base_prompt.txt:6,24,41,44,47'
@@ -122,17 +121,17 @@ def _shared_webshop_feedback(observation: str, reward: float, *, terminal: bool)
         text = f'{text}\nPublic environment reward: {float(reward)}'
     return text
 
-def make_actor(env: Any, sample_index: int, model: str='gpt-4o-mini', *, llm_fn: Optional[Callable[..., str]]=None, max_steps: int=DEFAULT_MAX_STEPS, max_environment_steps: Optional[int]=None, shared_t1_trajectory: str='', artifact_dir: str | Path | None=None) -> Callable[[], str]:
+def make_actor(env: Any, sample_index: int, model: str='gpt-4o-mini', *, llm_fn: Optional[Callable[..., str]]=None, max_steps: Optional[int]=None, max_environment_steps: Optional[int]=None, shared_t1_trajectory: str='', artifact_dir: str | Path | None=None) -> Callable[[], str]:
     """Create a fixed-session actor with one budget for actions and bad replies.
 
-    ``max_steps`` remains the legacy budget fallback when
-    ``max_environment_steps`` is not provided; it is not a provider-call cap.
+    ``max_steps`` is a compatibility alias for an explicit action budget.
+    One of the two budget arguments is required; neither caps provider calls.
     ``artifact_dir`` optionally records native HTML for human replay, never
     actor input. Terminal HTML is excluded because it contains evaluator data.
     """
-    max_ao_steps = int(max_steps if max_environment_steps is None else max_environment_steps)
-    if max_ao_steps <= 0:
-        raise ValueError('max_environment_steps must be positive')
+    max_ao_steps = max_steps if max_environment_steps is None else max_environment_steps
+    if type(max_ao_steps) is not int or max_ao_steps < 1:
+        raise ValueError('max_environment_steps must be an explicit positive integer')
     llm_usage_instrumented = llm_fn is None
     if llm_fn is None:
         from vrlbench.runtime.llm import complete
@@ -424,9 +423,14 @@ def _validate_shared_environment_identity(shared_t1_dir: str | Path | None, envi
     if summary['environment_identity'] != environment_identity:
         raise ValueError('WebShop shared T1 environment identity differs from the current source/data/index')
 
-def run(*, num_envs: int=10, sample_indices: Optional[list[int]]=None, model: str='gpt-4o-mini', trials: int=6, er: str='none', controller: str='none', allow_gold_feedback: bool=False, output_dir: Optional[str]=None, env_factory: Optional[Callable[[], Any]]=None, llm_fn: Optional[Callable[..., str]]=None, max_steps: int=DEFAULT_MAX_STEPS, max_environment_steps: Optional[int]=None, shared_t1_dir: Optional[str]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False, capture_observations: bool=False) -> list[EpisodeResult]:
+def run(*, trials: int, num_envs: int=10, sample_indices: Optional[list[int]]=None, model: str='gpt-4o-mini', er: str='none', controller: str='none', allow_gold_feedback: bool=False, output_dir: Optional[str]=None, env_factory: Optional[Callable[[], Any]]=None, llm_fn: Optional[Callable[..., str]]=None, max_steps: Optional[int]=None, max_environment_steps: Optional[int]=None, shared_t1_dir: Optional[str]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False, capture_observations: bool=False) -> list[EpisodeResult]:
     """Run WebShop under the unified VEX2 loop."""
     del allow_gold_feedback
+    if type(trials) is not int or trials < 1:
+        raise ValueError('trials must be an explicit positive integer')
+    resolved_max_environment_steps = max_steps if max_environment_steps is None else max_environment_steps
+    if type(resolved_max_environment_steps) is not int or resolved_max_environment_steps < 1:
+        raise ValueError('max_environment_steps must be an explicit positive integer')
     if type(capture_observations) is not bool:
         raise ValueError('capture_observations must be a boolean')
     controller = _normalize_webshop_controller(controller)
@@ -439,9 +443,6 @@ def run(*, num_envs: int=10, sample_indices: Optional[list[int]]=None, model: st
     if output_dir is None:
         output_dir = str(Path.cwd() / 'runs' / 'webshop')
     os.makedirs(output_dir, exist_ok=True)
-    resolved_max_environment_steps = int(max_steps) if max_environment_steps is None else int(max_environment_steps)
-    if resolved_max_environment_steps <= 0:
-        raise ValueError('max_environment_steps must be positive')
     selected = sorted(set((int(i) for i in sample_indices))) if sample_indices is not None else list(range(int(num_envs)))
     uses_official_runtime = env_factory is None
     if uses_official_runtime:

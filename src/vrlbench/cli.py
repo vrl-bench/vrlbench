@@ -44,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     compare.add_argument("--seed", type=int, help="bootstrap seed (default: 0)")
     compare.add_argument("--alpha", type=float, help="test level and interval error probability (default: 0.05)")
     demo = commands.add_parser("demo", help="run the real trial loop with a deterministic local fixture; no API calls")
+    demo.add_argument("--trials", type=int, required=True, help="maximum complete trials per case")
+    demo.add_argument("--max-environment-steps", type=int, required=True,
+                      help="action budget within each trial")
     demo.add_argument("--output-dir", type=Path, default=Path("runs/demo"))
     demo.add_argument("--memory-factory", help="trusted module:factory or file.py:factory to exercise")
     demo.add_argument("--plan", action="store_true")
@@ -72,7 +75,8 @@ def main(argv: list[str] | None = None) -> int:
                 factory = FactorySpec(args.memory_factory or "vrlbench.backends:create_demo_memory").resolved(Path.cwd())
                 spec = SimulationSpec(workload=WorkloadSpec("demo", cases=["demo-0", "demo-1"]),
                                       model=ModelSpec("scripted-local"),
-                                      memory=MemorySpec("demo_memory", factory), trials=3,
+                                      memory=MemorySpec("demo_memory", factory), trials=args.trials,
+                                      max_environment_steps=args.max_environment_steps,
                                       output_dir=str(args.output_dir), require_provider_usage=False)
             else:
                 spec = SimulationSpec.from_path(args.config)

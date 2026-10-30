@@ -127,7 +127,8 @@ def create_webshop_backend(): return WebShopBackend()
 
 class MethodConfigurationTests(unittest.TestCase):
     def test_old_wire_is_unchanged(self):
-        spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"))
+        spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
+                              trials=3, max_environment_steps=15)
         self.assertEqual(spec.to_dict()["memory"], {"name": "retry", "factory": None})
 
     def test_method_factory_json_resolution_and_mutual_exclusion(self):
@@ -138,7 +139,7 @@ class MethodConfigurationTests(unittest.TestCase):
             spec = SimulationSpec(
                 WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
                 MemorySpec("example", method_factory=FactorySpec("method.py:create")),
-                require_provider_usage=False,
+                trials=3, max_environment_steps=15, require_provider_usage=False,
             )
             source = root / "request.json"
             source.write_text(json.dumps(spec.to_dict()))
@@ -146,7 +147,8 @@ class MethodConfigurationTests(unittest.TestCase):
             restored.validate()
             self.assertEqual(restored.memory.method_factory.entrypoint, f"{plugin.resolve()}:create")
             both = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                MemorySpec("example", FactorySpec(f"{plugin}:create"), FactorySpec(f"{plugin}:create")))
+                MemorySpec("example", FactorySpec(f"{plugin}:create"), FactorySpec(f"{plugin}:create")),
+                trials=3, max_environment_steps=15)
             with self.assertRaisesRegex(ValueError, "not both"):
                 both.validate()
             for name in ("retry", "reflexion", "dynamic_cheatsheet_adapted", "ace_adapted",
@@ -155,7 +157,8 @@ class MethodConfigurationTests(unittest.TestCase):
                 for field in ("factory", "method_factory"):
                     with self.subTest(name=name, field=field):
                         builtin = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                            MemorySpec(name, **{field: FactorySpec(f"{plugin}:create")}))
+                            MemorySpec(name, **{field: FactorySpec(f"{plugin}:create")}),
+                            trials=3, max_environment_steps=15)
                         with self.assertRaisesRegex(ValueError, "override"):
                             builtin.validate()
 
@@ -194,7 +197,7 @@ class WholeMethodWorkerTests(unittest.TestCase):
             ModelSpec("scripted"),
             MemorySpec("joint_method", method_factory=FactorySpec(
                 f"{self.plugin}:create_method", {"log": str(self.log), "mode": mode})),
-            trials=total, output_dir=str(self.root / f"run-{self.counter}"),
+            trials=total, max_environment_steps=15, output_dir=str(self.root / f"run-{self.counter}"),
             require_provider_usage=False,
         ).to_dict()
 

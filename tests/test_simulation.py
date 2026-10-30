@@ -29,7 +29,7 @@ def demo(output: Path) -> SimulationSpec:
         workload=WorkloadSpec("demo", ["a", "b"]),
         model=ModelSpec("scripted-local"),
         memory=MemorySpec("trace", FactorySpec("vrlbench.backends:create_demo_memory")),
-        trials=3, output_dir=str(output), require_provider_usage=False,
+        trials=3, max_environment_steps=15, output_dir=str(output), require_provider_usage=False,
     )
 
 
@@ -46,9 +46,9 @@ class SimulationInputs(unittest.TestCase):
 
     def test_canonical_and_old_construction_produce_one_stable_wire_format(self):
         workload, model = WorkloadSpec("demo", ["a"]), ModelSpec("scripted")
-        current = SimulationSpec(workload=workload, model=model)
-        previous = EvaluationSpec(benchmark=workload, model=model)
-        positional = EvaluationSpec(workload, model)
+        current = SimulationSpec(workload=workload, model=model, trials=6, max_environment_steps=15)
+        previous = EvaluationSpec(benchmark=workload, model=model, trials=6, max_environment_steps=15)
+        positional = EvaluationSpec(workload, model, trials=6, max_environment_steps=15)
         self.assertEqual(current, previous)
         self.assertEqual(current, positional)
         self.assertIs(current.workload, current.benchmark)
@@ -59,7 +59,7 @@ class SimulationInputs(unittest.TestCase):
         replacement = WorkloadSpec("demo", ["new-case"])
         self.assertEqual(replace(previous, workload=replacement).benchmark, replacement)
         with self.assertRaisesRegex(TypeError, "not both"):
-            SimulationSpec(workload=workload, benchmark=workload, model=model)
+            SimulationSpec(workload=workload, benchmark=workload, model=model, trials=6, max_environment_steps=15)
 
     def test_new_and_old_json_inputs_roundtrip_to_same_spec(self):
         previous = demo(Path("runs/example")).to_dict()
@@ -72,25 +72,30 @@ class SimulationInputs(unittest.TestCase):
             with self.assertRaises(ValueError):
                 SimulationSpec.from_dict(config)
 
-    def test_environment_budget_defaults_resolve_once_and_preserve_explicit_overrides(self):
-        for name, cases, default in (
-            ("miniwob", [{"task": "click-test", "episode": 0}], 128),
-            ("webshop", [0], 15),
-            ("demo", ["a"], 15),
-        ):
-            for key in ("workload", "benchmark"):
-                with self.subTest(workload=name, key=key):
-                    config = {key: {"name": name, "cases": cases}, "model": {"name": "scripted"},
-                              "require_provider_usage": False}
-                    spec = SimulationSpec.from_dict(config)
-                    self.assertEqual((spec.trials, spec.max_environment_steps), (6, default))
-                    self.assertEqual(plan(spec)["config"]["max_environment_steps"], default)
-                    self.assertEqual(spec.resolved().max_environment_steps, default)
-                    self.assertEqual(SimulationSpec.from_dict(spec.to_dict()), spec)
-                    config["max_environment_steps"] = 3
-                    explicit = SimulationSpec.from_dict(config)
-                    self.assertEqual(explicit.resolved().max_environment_steps, 3)
-                    self.assertEqual(explicit.to_dict()["max_environment_steps"], 3)
+    def test_execution_budgets_are_explicit_and_validated_before_execution(self):
+        workload, model = WorkloadSpec("demo", ["a"]), ModelSpec("scripted")
+        for budgets in ({}, {"trials": 6}, {"max_environment_steps": 15}):
+            with self.subTest(sdk_budgets=budgets), self.assertRaises(TypeError):
+                SimulationSpec(workload, model, **budgets)
+        for key in ("workload", "benchmark"):
+            config = {key: {"name": "demo", "cases": ["a"]},
+                      "model": {"name": "scripted"}, "require_provider_usage": False,
+                      "trials": 4, "max_environment_steps": 3}
+            spec = SimulationSpec.from_dict(config)
+            self.assertEqual(plan(spec)["config"]["max_environment_steps"], 3)
+            self.assertEqual(SimulationSpec.from_dict(spec.to_dict()), spec)
+            for name in ("trials", "max_environment_steps"):
+                missing = dict(config)
+                del missing[name]
+                with self.subTest(key=key, missing=name):
+                    with patch("vrlbench.simulation.subprocess.Popen") as process:
+                        with self.assertRaisesRegex(ValueError, name):
+                            plan(SimulationSpec.from_dict(missing))
+                    process.assert_not_called()
+                for bad in (None, True, 0, -1, 1.5):
+                    with self.subTest(key=key, field=name, invalid=bad):
+                        with self.assertRaisesRegex(ValueError, name):
+                            plan(SimulationSpec.from_dict(dict(config, **{name: bad})))
 
     def test_public_and_legacy_method_names_validate_without_rewriting_wire_identity(self):
         legacy = {"dc_cu": "dynamic_cheatsheet_adapted", "ace": "ace_adapted", "vex2": "dsst"}
@@ -101,7 +106,7 @@ class SimulationInputs(unittest.TestCase):
                     with self.subTest(name=name):
                         self.assertEqual(load_method(name).name, public)
                         spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                                              MemorySpec(name), output_dir=str(output),
+                                              MemorySpec(name), trials=6, max_environment_steps=15, output_dir=str(output),
                                               require_provider_usage=False)
                         spec.validate()
                         wire = spec.to_dict()
@@ -122,7 +127,7 @@ class SimulationInputs(unittest.TestCase):
                 with self.subTest(presentation_alias=name):
                     load_method(name)
                     spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                                          MemorySpec(name), output_dir=str(output),
+                                          MemorySpec(name), trials=6, max_environment_steps=15, output_dir=str(output),
                                           require_provider_usage=False)
                     with self.assertRaises(ValueError):
                         spec.validate()
@@ -240,14 +245,14 @@ class SimulationProcess(unittest.TestCase):
         planned = json.loads(self.command("simulate", "--config", str(path), "--plan").stdout)
         self.assertEqual(planned["model_calls_executed"], 0)
         self.assertFalse((self.root / "never").exists())
-        output = json.loads(self.command("demo", "--output-dir", str(self.root / "demo")).stdout)
+        output = json.loads(self.command("demo", "--trials", "3", "--max-environment-steps", "15", "--output-dir", str(self.root / "demo")).stdout)
         self.assertEqual(output["status"], "complete")
         self.assertEqual(output["counts"]["recovered"], 2)
 
     def test_cli_json_plans_accept_public_and_legacy_method_identifiers(self):
         for name in (*list_methods(), "dynamic_cheatsheet_adapted", "ace_adapted", "dsst"):
             config = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                                    MemorySpec(name), output_dir=str(self.root / "never"),
+                                    MemorySpec(name), trials=6, max_environment_steps=15, output_dir=str(self.root / "never"),
                                     require_provider_usage=False).to_dict()
             config["workload"] = config.pop("benchmark")
             path = self.root / "method.json"

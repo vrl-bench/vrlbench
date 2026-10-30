@@ -534,8 +534,8 @@ miniwob = WorkloadSpec(
 
 | Setting | Limit or requirement |
 |---|---|
-| `SimulationSpec.trials` | Complete attempts per case, stopping on success. |
-| `max_environment_steps` | Environment interactions within each trial. |
+| `SimulationSpec.trials` | Required positive integer: complete attempts per case, stopping on success. |
+| `max_environment_steps` | Required positive integer: action budget within each trial. |
 | `workload.params.max_actor_steps` | Additional WebShop actor-step limit. |
 | `max_total_tokens` | Cumulative model tokens per case, across its trials. |
 | `timeout_seconds` | Evaluation worker wall-clock limit, distinct from the model-call timeout. |

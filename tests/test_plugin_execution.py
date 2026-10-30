@@ -51,7 +51,7 @@ class PluginExecutionTests(unittest.TestCase):
         spec = SimulationSpec(
             WorkloadSpec("demo", ["case"]), ModelSpec("offline"),
             MemorySpec("local_memory", factory=FactorySpec("local_memory:create")),
-            trials=2, output_dir=str(self.root / "module-run"), require_provider_usage=False,
+            trials=2, max_environment_steps=15, output_dir=str(self.root / "module-run"), require_provider_usage=False,
         )
         with patch.object(sys, "path", [str(self.root), *sys.path]):
             self.assertEqual(plan(spec)["model_calls_executed"], 0)
@@ -115,7 +115,7 @@ class PluginExecutionTests(unittest.TestCase):
             WorkloadSpec("demo", ["case"]),
             ModelSpec("offline", transport=FactorySpec(f"{transport}:create")),
             MemorySpec("custom", factory=FactorySpec(f"{memory}:create")),
-            trials=2, output_dir=str(self.root / "conflict-run"), require_provider_usage=False,
+            trials=2, max_environment_steps=15, output_dir=str(self.root / "conflict-run"), require_provider_usage=False,
         )
         result = simulate(spec)
         self.assertEqual(result.status, "failed")
@@ -182,7 +182,7 @@ class PluginExecutionTests(unittest.TestCase):
                 output = self.root / mode
                 result = simulate(SimulationSpec(
                     WorkloadSpec("offline", ["case"], factory=FactorySpec(f"{plugin}:create", {"mode": mode})),
-                    ModelSpec("offline"), trials=1, output_dir=str(output),
+                    ModelSpec("offline"), trials=1, max_environment_steps=15, output_dir=str(output),
                     timeout_seconds=4, require_provider_usage=False,
                 ))
                 self.assertEqual(result.status, mode)

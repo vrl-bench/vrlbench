@@ -19,7 +19,7 @@ HAS_RUNTIME = importlib.util.find_spec("openai") is not None
 class ReplayConfiguration(unittest.TestCase):
     def test_default_wire_format_stays_unchanged(self):
         spec = SimulationSpec(WorkloadSpec("demo", ["a"]), ModelSpec("scripted"),
-                              require_provider_usage=False)
+                              trials=3, max_environment_steps=15, require_provider_usage=False)
         self.assertNotIn("replay_gate", spec.to_dict())
         spec = replace(spec, replay_gate=ReplayGateSpec(epsilon=.5, seed=42))
         self.assertEqual(SimulationSpec.from_dict(spec.to_dict()), spec)
@@ -34,6 +34,7 @@ class ReplayConfiguration(unittest.TestCase):
                 gate.validate()
         spec = SimulationSpec.from_dict({
             "workload": {"name": "demo", "cases": ["a"]}, "model": {"name": "local"},
+            "trials": 3, "max_environment_steps": 15,
             "replay_gate": {"policy": "custom", "factory": {"entrypoint": "policy.py:create"}},
         }).resolved(ROOT)
         self.assertEqual(spec.replay_gate.factory.entrypoint, str(ROOT / "policy.py") + ":create")
@@ -198,7 +199,7 @@ class ReplayLifecycle(unittest.TestCase):
             source = SimulationSpec(
                 WorkloadSpec("webshop", [0], factory=FactorySpec(f"{plugin}:create_webshop_backend")),
                 ModelSpec("scripted", transport=FactorySpec(f"{plugin}:create_client")),
-                trials=3, output_dir=str(root / "retry"), require_provider_usage=False,
+                trials=3, max_environment_steps=15, output_dir=str(root / "retry"), require_provider_usage=False,
             )
             baseline = simulate(source).require_complete()
             source_bytes = (root / "retry/evaluation.json").read_bytes()
@@ -236,13 +237,15 @@ class ReplayLifecycle(unittest.TestCase):
         singleton = lambda context: True
         wrapped = wrap_run_episode(original, gate={"policy": "custom", "seed": 0},
                                    benchmark="custom", policy_factory=lambda: singleton)
-        wrapped(actor=lambda: "", metadata={"case_id": "a"})
+        with self.assertRaisesRegex(TypeError, "total_trials"):
+            wrapped(actor=lambda: "", metadata={"case_id": "a"})
+        wrapped(actor=lambda: "", total_trials=2, metadata={"case_id": "a"})
         with self.assertRaisesRegex(ValueError, "fresh instance"):
-            wrapped(actor=lambda: "", metadata={"case_id": "b"})
+            wrapped(actor=lambda: "", total_trials=2, metadata={"case_id": "b"})
         fresh = wrap_run_episode(original, gate={"policy": "custom", "seed": 0},
                                  benchmark="custom", policy_factory=lambda: lambda context: True)
-        fresh(actor=lambda: "", metadata={"case_id": "a"})
-        fresh(actor=lambda: "", metadata={"case_id": "b"})
+        fresh(actor=lambda: "", total_trials=2, metadata={"case_id": "a"})
+        fresh(actor=lambda: "", total_trials=2, metadata={"case_id": "b"})
 
     def test_public_simulator_gate_defaults_and_both_endpoints(self):
         from vrlbench import simulate

@@ -46,7 +46,8 @@ print('installed API imports lazily')
         self.assertEqual(self.command("-c", source, no_site=True).strip(), "installed API imports lazily")
         help_text = self.command("-m", "vrlbench", "--help", no_site=True)
         self.assertIn("simulate", help_text)
-        plan = json.loads(self.command("-m", "vrlbench", "demo", "--plan", no_site=True))
+        plan = json.loads(self.command("-m", "vrlbench", "demo", "--trials", "3",
+                                       "--max-environment-steps", "15", "--plan", no_site=True))
         self.assertEqual(plan["model_calls_executed"], 0)
 
     def test_environment_import_resolves_packaged_locks_and_overlay(self):
@@ -73,7 +74,8 @@ print(json.dumps({'sdk': vrlbench.__file__, 'module': dependency.__file__,
         self.assertIn("spacy", result["packages"])
 
     def test_installed_demo_executes_the_real_trial_loop_offline(self):
-        result = json.loads(self.command("-m", "vrlbench", "demo", "--output-dir", str(self.root / "demo")))
+        result = json.loads(self.command("-m", "vrlbench", "demo", "--trials", "3",
+                                        "--max-environment-steps", "15", "--output-dir", str(self.root / "demo")))
         self.assertEqual(result["status"], "complete")
         inspection = json.loads(self.command("-m", "vrlbench", "inspect", str(self.root / "demo"),
                                              "--case", "demo-0", "--format", "json"))

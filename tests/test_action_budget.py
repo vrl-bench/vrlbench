@@ -276,6 +276,23 @@ class TwoLevelEpisodeBudgetTests(unittest.TestCase):
         self.no_client.start()
         self.addCleanup(self.no_client.stop)
 
+    def test_native_entrypoints_require_explicit_budgets_before_setup(self):
+        for module in (miniwob, webshop):
+            with self.subTest(environment=module.__name__), patch.object(module.os, "makedirs") as output:
+                for limits in ({}, {"trials": 2}, {"max_environment_steps": 2},
+                               {"trials": True, "max_environment_steps": 2},
+                               {"trials": 2, "max_environment_steps": False}):
+                    with self.subTest(limits=limits), self.assertRaises((TypeError, ValueError)):
+                        module.run(**limits)
+                output.assert_not_called()
+                env = Mock()
+                with patch.dict(os.environ, {"MINIWOB_MAX_ENVIRONMENT_STEPS": "99"}):
+                    for limit in (None, 0, -1, True, 1.5, "2"):
+                        with self.subTest(step_limit=limit), self.assertRaisesRegex(ValueError, "explicit positive integer"):
+                            module.make_actor(env, 0, max_environment_steps=limit, llm_fn=Mock())
+                env.reset.assert_not_called()
+                env.step.assert_not_called()
+
     def actor_case(self, stack, benchmark, responses, *, succeeds=True, **budget):
         model = Mock(side_effect=responses) if isinstance(responses, list) else Mock(return_value=responses)
         if benchmark == "miniwob":

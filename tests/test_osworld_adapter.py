@@ -139,7 +139,8 @@ class OSWorldAdapterTests(unittest.TestCase):
         from vrlbench import ModelSpec, SimulationSpec, WorkloadSpec, plan
         from vrlbench.results import aggregate_cases, compare_results
 
-        spec = SimulationSpec(WorkloadSpec("osworld", [self.case], self.params), ModelSpec("fixture"))
+        spec = SimulationSpec(WorkloadSpec("osworld", [self.case], self.params), ModelSpec("fixture"),
+                              trials=6, max_environment_steps=15)
         self.assertEqual(plan(spec)["model_calls_executed"], 0)
         relative = replace(spec, workload=replace(spec.workload, cases=[{**self.case, "config_file": "task.json"}],
                                                   params={"env_kwargs": {"path_to_vm": "vm/image.vmx"}}))

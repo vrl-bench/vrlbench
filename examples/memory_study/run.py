@@ -13,13 +13,14 @@ from vrlbench import SimulationSpec, compare_results, simulate
 CONFIGS = Path(__file__).resolve().parent.parent / "configs"
 
 
-def study_spec(condition: str, output: Path, *, trials: int = 3,
-               keep_last: int = 2) -> SimulationSpec:
+def study_spec(condition: str, output: Path, *, trials: int,
+               max_environment_steps: int, keep_last: int = 2) -> SimulationSpec:
     """Reuse the CLI configurations rather than maintaining another task setup."""
     if condition not in {"retry", "feedback"}:
         raise ValueError("unknown local study condition")
     value = SimulationSpec.from_path(CONFIGS / f"local_{condition}.json").to_dict()
-    value.update(output_dir=str(output), trials=trials)
+    value.update(output_dir=str(output), trials=trials,
+                 max_environment_steps=max_environment_steps)
     if condition == "feedback":
         value["memory"]["factory"]["kwargs"]["keep_last"] = keep_last
     return SimulationSpec.from_dict(value)
@@ -85,14 +86,18 @@ def markdown_report(report: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run_study(output: Path, *, trials: int = 3, keep_last: int = 2) -> dict[str, Any]:
+def run_study(output: Path, *, trials: int, max_environment_steps: int,
+              keep_last: int = 2) -> dict[str, Any]:
     if type(trials) is not int or trials < 1 or type(keep_last) is not int or keep_last < 1:
         raise ValueError("trials and keep_last must be positive integers")
+    if type(max_environment_steps) is not int or max_environment_steps != 1:
+        raise ValueError("this fixture requires max_environment_steps=1")
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
         raise FileExistsError(f"study output is not empty: {output}")
     results = {name: simulate(study_spec(name, output / name, trials=trials,
+                                       max_environment_steps=max_environment_steps,
                                        keep_last=keep_last)).require_complete()
                for name in ("retry", "feedback")}
     memory_events = {}
@@ -137,10 +142,13 @@ def run_study(output: Path, *, trials: int = 3, keep_last: int = 2) -> dict[str,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--trials", type=int, default=3)
+    parser.add_argument("--trials", type=int, required=True)
+    parser.add_argument("--max-environment-steps", type=int, required=True,
+                        help="action budget per trial; this fixture requires 1")
     parser.add_argument("--keep-last", type=int, default=2)
     args = parser.parse_args()
-    run_study(args.output_dir, trials=args.trials, keep_last=args.keep_last)
+    run_study(args.output_dir, trials=args.trials,
+              max_environment_steps=args.max_environment_steps, keep_last=args.keep_last)
     print(args.output_dir.resolve() / "report.md")
     return 0
 

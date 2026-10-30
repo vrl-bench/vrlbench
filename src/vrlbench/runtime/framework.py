@@ -24,17 +24,18 @@ class VEX2:
     def __init__(
         self,
         model: str = "gpt-4o-mini",
-        trials: int = 6,
+        *,
+        trials: int,
         er: str = "none",
         controller: str = "dsst",
         allow_gold_feedback: bool = False,
         max_total_tokens: Optional[int] = None,
         require_provider_usage: bool = False,
     ) -> None:
-        if int(trials) < 1:
-            raise ValueError("trials must be positive")
+        if type(trials) is not int or trials < 1:
+            raise ValueError("trials must be a positive integer")
         self.model = model
-        self.trials = int(trials)
+        self.trials = trials
         self.er = canonical_er_name(er)
         self.controller = _controller_name(controller)
         self.allow_gold_feedback = bool(allow_gold_feedback)

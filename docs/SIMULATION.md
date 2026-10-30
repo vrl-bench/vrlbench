@@ -46,9 +46,9 @@ The [trial-loop diagram](assets/memory-research.svg) expands steps 3–4.
 MiniWoB, WebShop, WebArena, and OSWorld use the common trial loop.
 Custom workloads use the same runtime through `runtime.run_episode(...)`.
 
-By default, a case has six trials; each native MiniWoB trial has an action
-budget of 128, and each WebShop trial has 15. Explicit configurations override
-these defaults and retain their resolved values in the saved results.
+Every simulation must explicitly set `trials` and `max_environment_steps` to
+positive integers. Neither budget has a default; missing or invalid values
+are rejected before execution. Both limits are retained in the saved results.
 
 `trials` limits the number of complete attempts at a case;
 `max_environment_steps` sets the action budget within each

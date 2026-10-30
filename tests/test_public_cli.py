@@ -30,7 +30,7 @@ class PublicCLI(unittest.TestCase):
         self.assertIn("inspect", output)
         self.assertIn("compare", output)
         self.assertIn("demo", output)
-        plan = json.loads(self.command("demo", "--plan", no_site=True))
+        plan = json.loads(self.command("demo", "--trials", "3", "--max-environment-steps", "15", "--plan", no_site=True))
         self.assertEqual(plan["model_calls_executed"], 0)
         self.assertEqual(plan["config"]["trials"], 3)
 
@@ -43,13 +43,37 @@ class PublicCLI(unittest.TestCase):
                              "factory": {"entrypoint": "not_installed_backend:create"}},
                 "model": {"name": "unused-model"},
                 "memory": {"name": "my_memory", "factory": {"entrypoint": "not_installed_memory:create"}},
-                "trials": 4, "output_dir": str(root / "never-created"),
+                "trials": 4, "max_environment_steps": 15, "output_dir": str(root / "never-created"),
                 "require_provider_usage": False,
             }))
             plan = json.loads(self.command("simulate", "--config", str(config), "--plan", no_site=True))
             self.assertEqual(plan["model_calls_executed"], 0)
             self.assertEqual(plan["config"]["trials"], 4)
             self.assertFalse((root / "never-created").exists())
+
+    def test_missing_budgets_are_rejected_before_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "never-created"
+            config = {"workload": {"name": "demo", "cases": ["a"]},
+                      "model": {"name": "scripted"}, "trials": 3,
+                      "max_environment_steps": 15, "output_dir": str(output)}
+            env = dict(os.environ, PYTHONPATH=str(ROOT / "src"),
+                       PYTHONDONTWRITEBYTECODE="1")
+            for field in ("trials", "max_environment_steps"):
+                missing = dict(config)
+                del missing[field]
+                path = root / "config.json"
+                path.write_text(json.dumps(missing))
+                result = subprocess.run(
+                    [sys.executable, "-S", "-m", "vrlbench", "simulate",
+                     "--config", str(path)], cwd=ROOT, env=env,
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(field, result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertFalse(output.exists())
 
     def test_paper_specific_commands_are_not_public_cli_commands(self):
         for name in ("results", "plan", "run", "reproduce"):
@@ -89,7 +113,7 @@ print("checkout statistics API imports without analysis dependencies")
     def test_demo_and_inspection_use_recorded_run(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "demo"
-            result = json.loads(self.command("demo", "--output-dir", str(output)))
+            result = json.loads(self.command("demo", "--trials", "3", "--max-environment-steps", "15", "--output-dir", str(output)))
             self.assertEqual(result["status"], "complete")
             inspection = json.loads(self.command("inspect", str(output), "--case", "demo-0", "--format", "json"))
             self.assertEqual(inspection["case"]["case_id"], "demo-0")

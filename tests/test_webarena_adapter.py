@@ -103,7 +103,8 @@ class WebArenaAdapterTests(unittest.TestCase):
         from vrlbench.results import aggregate_cases, compare_results
 
         params = {"reset_factory": {"entrypoint": "test:reset_factory"}}
-        spec = SimulationSpec(WorkloadSpec("webarena", [self.case], params), ModelSpec("fixture"))
+        spec = SimulationSpec(WorkloadSpec("webarena", [self.case], params), ModelSpec("fixture"),
+                              trials=6, max_environment_steps=15)
         self.assertEqual(plan(spec)["model_calls_executed"], 0)
         for invalid in (None, "", " ", 3):
             with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "judge_model"):

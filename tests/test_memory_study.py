@@ -32,7 +32,7 @@ class MemoryStudy(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.output = Path(cls.temporary.name) / "default"
-        cls.report = study.run_study(cls.output)
+        cls.report = study.run_study(cls.output, trials=3, max_environment_steps=1)
 
     @classmethod
     def tearDownClass(cls):
@@ -80,13 +80,15 @@ class MemoryStudy(unittest.TestCase):
                 self.assertEqual(sum(t["trial_metadata"]["environment_steps"]
                                      for t in case["trials"]), len(case["trials"]))
             self.assertEqual(len(condition["cases"][2]["trials"]), 1)
-        short = study.run_study(Path(self.temporary.name) / "short", trials=1)
+        short = study.run_study(Path(self.temporary.name) / "short", trials=1,
+                                max_environment_steps=1)
         self.assertEqual(short["conditions"]["retry"]["counts"],
                          short["conditions"]["feedback"]["counts"])
         self.assertTrue(all(len(c["trials"]) == 1 for c in short["conditions"]["feedback"]["cases"]))
 
     def test_forgetting_changes_observed_behavior_without_a_new_actor(self):
-        report = study.run_study(Path(self.temporary.name) / "window1", keep_last=1)
+        report = study.run_study(Path(self.temporary.name) / "window1", trials=3,
+                                 max_environment_steps=1, keep_last=1)
         case = report["conditions"]["feedback"]["cases"][1]
         self.assertEqual([json.loads(t["trajectory"])["action"] for t in case["trials"]],
                          ["amber", "blue", "amber"])
@@ -129,7 +131,7 @@ class MemoryStudy(unittest.TestCase):
         self.assertEqual(case_events[2]["retained_after"], ["amber", "blue"])
         before = (self.output / "report.json").read_bytes()
         with self.assertRaises(FileExistsError):
-            study.run_study(self.output)
+            study.run_study(self.output, trials=3, max_environment_steps=1)
         self.assertEqual((self.output / "report.json").read_bytes(), before)
 
     def test_cli_configures_the_same_simulation_and_script_runs_outside_checkout(self):
@@ -145,7 +147,8 @@ class MemoryStudy(unittest.TestCase):
             self.assertEqual(actual["resources"]["api_calls"], 0)
             self.assertEqual((output / "memory_events.jsonl").is_file(), condition == "feedback")
         output = Path(self.temporary.name) / "external"
-        subprocess.run([sys.executable, str(EXAMPLE / "run.py"), "--output-dir", str(output)],
+        subprocess.run([sys.executable, str(EXAMPLE / "run.py"), "--output-dir", str(output),
+                        "--trials", "3", "--max-environment-steps", "1"],
                        cwd=self.temporary.name, check=True, capture_output=True, text=True,
                        env=env)
         self.assertTrue((output / "report.md").is_file())

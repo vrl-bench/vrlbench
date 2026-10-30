@@ -4,6 +4,8 @@
 
 Choose an interactive environment, model, and memory system, then use one workflow:
 `simulate` → `inspect` → `compare` → revise the memory implementation.
+Set `trials` and `max_environment_steps` explicitly in every simulation
+configuration. Both must be positive integers; neither has a default.
 
 - **[MiniWoB](#use-miniwob):** browser and UI tasks, using the
   [MiniWoB configuration](../examples/configs/miniwob_retry.json).
@@ -482,8 +484,8 @@ The [example guide](../examples/memory_study/README.md) also shows how to produc
 a report and change the retention window:
 
 ```bash
-python examples/memory_study/run.py --output-dir runs/memory-study
-python examples/memory_study/run.py --output-dir runs/memory-study-window1 --keep-last 1
+python examples/memory_study/run.py --output-dir runs/memory-study --trials 3 --max-environment-steps 1
+python examples/memory_study/run.py --output-dir runs/memory-study-window1 --trials 3 --max-environment-steps 1 --keep-last 1
 ```
 
 Each report joins configurations, memory-hook events, and trial records in
@@ -493,7 +495,7 @@ retention window affects later actions.
 ### Scripted lifecycle checks
 
 ```bash
-vrlbench demo --output-dir runs/demo
+vrlbench demo --output-dir runs/demo --trials 3 --max-environment-steps 15
 python examples/memory_strategy/check.py
 python examples/agent_loop/run.py
 ```

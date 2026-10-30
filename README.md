@@ -102,8 +102,9 @@ hard to observe in one-off use or cross-task experience reuse.
 
 ## Quick start
 
-Select a workload, configure the model and memory method, then use the same
-`simulate` → `inspect` → `compare` workflow for online computer-control tasks.
+Select a workload, configure the model and memory method, and explicitly set
+`trials` and `max_environment_steps`. Use the same `simulate` → `inspect` →
+`compare` workflow for online computer-control tasks.
 
 | Environment | Task family | Setup and configuration |
 |---|---|---|

@@ -35,7 +35,7 @@ class CaseSelectionCompatibility(unittest.TestCase):
             spec = SimulationSpec(
                 WorkloadSpec("demo", ["a", "b"]), ModelSpec("scripted-local"),
                 MemorySpec("local_trace", factory=FactorySpec("vrlbench.backends:create_demo_memory")),
-                trials=3, output_dir=str(root / "first"), require_provider_usage=False,
+                trials=3, max_environment_steps=15, output_dir=str(root / "first"), require_provider_usage=False,
             )
             first = simulate(spec).require_complete()
             second = simulate(replace(spec, workload=replace(spec.workload, cases=["b", "a"]),
@@ -56,7 +56,7 @@ class CaseSelectionCompatibility(unittest.TestCase):
             with self.subTest(workload=name), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 source = SimulationSpec(WorkloadSpec(name, cases), ModelSpec("fixture"),
-                                        require_provider_usage=False)
+                                        trials=6, max_environment_steps=15, require_provider_usage=False)
                 recorded_fixture(source).write(root / "evaluation.json")
                 (root / "request.json").write_text(json.dumps(source.to_dict()))
                 candidate = replace(source, workload=replace(source.workload, cases=list(reversed(cases))),
@@ -74,7 +74,7 @@ class CaseSelectionCompatibility(unittest.TestCase):
             with self.subTest(workload=name), tempfile.TemporaryDirectory() as directory:
                 source = SimulationSpec(
                     WorkloadSpec(name, [0, 1], factory=FactorySpec("custom_backend:create")),
-                    ModelSpec("fixture"), require_provider_usage=False,
+                    ModelSpec("fixture"), trials=6, max_environment_steps=15, require_provider_usage=False,
                 )
                 target = replace(source, workload=replace(source.workload, cases=[1, 0]))
                 with self.assertRaisesRegex(ValueError, "incompatible"):
@@ -86,7 +86,7 @@ class CaseSelectionCompatibility(unittest.TestCase):
 
     def test_other_model_environment_and_credential_settings_remain_strict(self):
         source = SimulationSpec(WorkloadSpec("demo", ["a", "b"]), ModelSpec("fixture"),
-                                require_provider_usage=False)
+                                trials=6, max_environment_steps=15, require_provider_usage=False)
         variants = [
             replace(source, model=replace(source.model, name="other-model")),
             replace(source, model=replace(source.model, api_key_env="OTHER_API_KEY")),

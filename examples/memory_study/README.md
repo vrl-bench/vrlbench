@@ -47,17 +47,17 @@ The feedback log records the input passed to `on_trial_end`, retained values bef
 For one report joining the configurations, actual memory events and verbatim trial records, run:
 
 ```bash
-python examples/memory_study/run.py --output-dir runs/memory-study
+python examples/memory_study/run.py --output-dir runs/memory-study --trials 3 --max-environment-steps 1
 ```
 
-Open `runs/memory-study/report.md`; `report.json` contains the same case records and SDK comparison. The script reads the same two JSON configurations rather than maintaining a separate task definition. It also works from outside the checkout when invoked by its absolute path with the installed environment.
+Open `runs/memory-study/report.md`; `report.json` contains the same case records and SDK comparison. The script reads the same two JSON configurations and requires both budget arguments. This fixture supports exactly one action per trial, so `--max-environment-steps` must be `1`. It also works from outside the checkout when invoked by its absolute path with the installed environment.
 
 ## 3. Modify the memory system and test again
 
 Change `memory.factory.kwargs.keep_last` in a copy of the feedback configuration and select a new output directory. Or produce another complete report:
 
 ```bash
-python examples/memory_study/run.py --output-dir runs/memory-study-window1 --keep-last 1
+python examples/memory_study/run.py --output-dir runs/memory-study-window1 --trials 3 --max-environment-steps 1 --keep-last 1
 ```
 
 In `case_b`, keeping only one rejection makes the system forget `amber` after rejecting `blue`. The actor chooses `amber` again and exhausts its three-trial budget, whereas the two-entry memory recovers. Inspect the write and read records to follow how the retention change affects this actor's next action.

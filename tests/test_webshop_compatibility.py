@@ -329,7 +329,8 @@ class NativeEnvironmentIdentity(unittest.TestCase):
                     patch.object(self.webshop, "make_actor") as actor,
                 ):
                     with self.assertRaisesRegex(ValueError, "environment identity"):
-                        self.webshop.run(sample_indices=[0], shared_t1_dir=str(source),
+                        self.webshop.run(sample_indices=[0], trials=1, max_environment_steps=15,
+                                         shared_t1_dir=str(source),
                                          output_dir=str(self.root / "rejected"))
                 vex.assert_not_called()
                 actor.assert_not_called()
@@ -344,7 +345,8 @@ class NativeEnvironmentIdentity(unittest.TestCase):
             patch.object(self.webshop, "make_actor") as actor,
         ):
             with self.assertRaisesRegex(ValueError, "environment identity"):
-                self.webshop.run(sample_indices=[0], shared_t1_dir=str(self.root / "missing"),
+                self.webshop.run(sample_indices=[0], trials=1, max_environment_steps=15,
+                                 shared_t1_dir=str(self.root / "missing"),
                                  output_dir=str(self.root / "rejected"))
         vex.assert_not_called()
         actor.assert_not_called()
@@ -372,7 +374,7 @@ class NativeEnvironmentIdentity(unittest.TestCase):
             patch.object(self.webshop, "_load_shared_t1", return_value={0: {"success": True, "trajectory": "synthetic shared trial"}}),
             patch.object(self.webshop, "prepare_shared_t1", return_value=(episode, object())),
         ):
-            results = self.webshop.run(sample_indices=[0], trials=1,
+            results = self.webshop.run(sample_indices=[0], trials=1, max_environment_steps=15,
                                        shared_t1_dir=str(source),
                                        output_dir=str(self.root / "accepted"))
         self.assertEqual(events, ["identity", "runtime", "environment", "actor"])
@@ -392,7 +394,7 @@ class NativeEnvironmentIdentity(unittest.TestCase):
             patch.object(self.webshop, "make_actor"),
         ):
             vex.return_value.run.return_value = episode
-            self.webshop.run(sample_indices=[0], trials=1, env_factory=factory,
+            self.webshop.run(sample_indices=[0], trials=1, max_environment_steps=15, env_factory=factory,
                              output_dir=str(self.root / "synthetic"))
         summary = json.loads((self.root / "synthetic" / "results.json").read_text())
         self.assertIsNone(summary["environment_identity"])

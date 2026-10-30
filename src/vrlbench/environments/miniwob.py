@@ -92,7 +92,6 @@ def _load_mw_stack():
     return _mw_stack
 MINIWOB_BOUNDED_REPEAT_MAX = 128
 MINIWOB_BOUNDED_REPEAT_VARIABLE = '_'
-DEFAULT_MAX_ENVIRONMENT_STEPS = 128
 MINIWOB_PUBLIC_INTERACTION_RULES = "agent.movemouse only hovers. agent.type and agent.press act on the currently focused control. An HTML control marked readonly cannot accept direct typing. XPath tag tests for SVG elements are namespace-sensitive; target an SVG element with a namespace-stable selector such as `//*[@id='target']` or `//*[local-name()='circle' and @id='target']`, not an unprefixed tag selector such as `//circle`. Each click XPath is resolved against the current DOM when that primitive executes, after any earlier action in the same block."
 MINIWOB_DSST_BASIC_ENVIRONMENT_RULES = 'Each complete attempt starts from a browser reset in the named MiniWoB task family. The Actor receives a natural-language task and the current HTML observation. It may interact only through click_xpath, type, press, click_option, and movemouse. Each executed primitive action returns environment feedback and consumes one A-O step. Reset-local task values and DOM identifiers may change across attempts; success is determined only by the environment. ' + MINIWOB_PUBLIC_INTERACTION_RULES
 REACT_BATCH_REMAINING_ENVIRONMENT_BUDGET_PROMPT_TEMPLATE = 'Current trial action budget: {remaining_steps} action opportunity/opportunities remain. Each executed primitive Agent API call consumes one opportunity. A rejected response with no dispatchable action also consumes one opportunity, leaves the environment unchanged, and is followed by another decision if budget remains. Generate actions until choosing the next action genuinely requires a new Observation; do not request more actions than remain.'
@@ -299,11 +298,8 @@ if _EPISODE_TIMEOUT < 0:
 _INFRA_RETRIES = int(os.environ.get('MW_INFRA_RETRIES', '1'))
 
 def _resolve_max_environment_steps(value: Optional[int]) -> int:
-    if value is None:
-        value = int(os.environ.get('MINIWOB_MAX_ENVIRONMENT_STEPS', str(DEFAULT_MAX_ENVIRONMENT_STEPS)))
-    value = int(value)
-    if value <= 0:
-        raise ValueError('max_environment_steps must be positive')
+    if type(value) is not int or value < 1:
+        raise ValueError('max_environment_steps must be an explicit positive integer')
     return value
 
 def _remaining_environment_steps(interaction_ledger: EnvironmentInteractionLedger) -> int:
@@ -353,8 +349,8 @@ def make_actor(env: Any, seed: int, model: str='gpt-4o-mini', max_steps: Optiona
         env:       Synapse MiniWoBEnv instance (shared across episodes).
         seed:      Episode seed (determines the first task instance).
         model:     LLM deployment name.
-        max_steps: Compatibility fallback for the per-trial action budget when
-                  ``max_environment_steps`` is not supplied.
+        max_steps: Compatibility alias for an explicitly supplied per-trial
+                  action budget. One of the two budget arguments is required.
         max_environment_steps:
                   Hard limit on action opportunities in one trial. A rejected
                   response spends one opportunity without an ``env.step`` call.
@@ -635,7 +631,7 @@ def _normalize_miniwob_controller(value: object) -> str:
         raise ValueError(f'controller must be one of none or dsst; got {value!r}')
     return controller
 
-def run(tasks: Optional[List[str]]=None, episodes_per_task: int=10, model: str='gpt-4o-mini', trials: int=6, er: str='none', controller: str='none', allow_gold_feedback: bool=False, output_dir: Optional[str]=None, headless: bool=True, shared_t1_dir: Optional[str]=None, episode_indices: Optional[List[int]]=None, trial_seed_mode: str='fixed_instance', max_environment_steps: Optional[int]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False, capture_observations: bool=False) -> None:
+def run(tasks: Optional[List[str]]=None, episodes_per_task: int=10, model: str='gpt-4o-mini', *, trials: int, max_environment_steps: int, er: str='none', controller: str='none', allow_gold_feedback: bool=False, output_dir: Optional[str]=None, headless: bool=True, shared_t1_dir: Optional[str]=None, episode_indices: Optional[List[int]]=None, trial_seed_mode: str='fixed_instance', max_total_tokens: Optional[int]=None, require_provider_usage: bool=False, capture_observations: bool=False) -> None:
     """Run the MiniWoB experiment using VEX².
 
     For each task x episode, calls ``VEX2.run()`` with a fresh actor and
@@ -645,6 +641,9 @@ def run(tasks: Optional[List[str]]=None, episodes_per_task: int=10, model: str='
     Output: ``{output_dir}/results.json`` with per-task VRL Task SR.
            ``{output_dir}/env_results_trial_{t}.json`` for analysis scripts.
     """
+    if type(trials) is not int or trials < 1:
+        raise ValueError('trials must be an explicit positive integer')
+    resolved_max_environment_steps = _resolve_max_environment_steps(max_environment_steps)
     from vrlbench.runtime import VEX2
     from vrlbench.runtime.controllers import make_controller
     from vrlbench.runtime.er import make_er_slot
@@ -669,7 +668,6 @@ def run(tasks: Optional[List[str]]=None, episodes_per_task: int=10, model: str='
     os.makedirs(output_dir, exist_ok=True)
     if trial_seed_mode not in {'fixed_instance', 'paired_trial'}:
         raise ValueError("trial_seed_mode must be 'fixed_instance' or 'paired_trial'")
-    resolved_max_environment_steps = _resolve_max_environment_steps(max_environment_steps)
     vex = VEX2(er=er, controller=controller, allow_gold_feedback=allow_gold_feedback, model=model, trials=trials, max_total_tokens=max_total_tokens, require_provider_usage=require_provider_usage)
     logger.info('VEX² config: %s', vex)
     task_sr: Dict[str, float] = {}

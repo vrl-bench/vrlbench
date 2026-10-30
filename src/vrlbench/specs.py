@@ -137,14 +137,14 @@ class SimulationSpec:
     ``workload`` is the public task-selection field. The ``benchmark`` keyword
     and property remain compatible with earlier SDK callers; serialization
     keeps that version-1 key for the unchanged worker and stored results.
-    Omitted action budgets resolve to 128 for native MiniWoB and 15 otherwise.
+    Both trial and action budgets must be supplied explicitly.
     """
 
     workload: WorkloadSpec
     model: ModelSpec
-    memory: MemorySpec = field(default_factory=MemorySpec)
-    trials: int = 6
+    trials: int
     max_environment_steps: int
+    memory: MemorySpec = field(default_factory=MemorySpec)
     output_dir: str = "runs/evaluation"
     shared_t1_dir: str | None = None
     timeout_seconds: float = 600.0
@@ -158,8 +158,9 @@ class SimulationSpec:
         workload: WorkloadSpec | None = None,
         model: ModelSpec | None = None,
         memory: MemorySpec | None = None,
-        trials: int = 6,
-        max_environment_steps: int | None = None,
+        *,
+        trials: int,
+        max_environment_steps: int,
         output_dir: str = "runs/evaluation",
         shared_t1_dir: str | None = None,
         timeout_seconds: float = 600.0,
@@ -167,7 +168,6 @@ class SimulationSpec:
         require_provider_usage: bool = True,
         runtime_env: dict[str, str] | None = None,
         replay_gate: ReplayGateSpec | None = None,
-        *,
         benchmark: WorkloadSpec | None = None,
     ) -> None:
         if workload is not None and benchmark is not None:
@@ -175,8 +175,6 @@ class SimulationSpec:
         selected = workload if workload is not None else benchmark
         if selected is None or model is None:
             raise TypeError("SimulationSpec requires workload and model")
-        if max_environment_steps is None:
-            max_environment_steps = 128 if selected.name == "miniwob" and selected.factory is None else 15
         values = {
             "workload": selected, "model": model,
             "memory": MemorySpec() if memory is None else memory,
@@ -211,6 +209,9 @@ class SimulationSpec:
         if not isinstance(data, Mapping):
             raise ValueError("simulation config must be a JSON object")
         value = dict(data)
+        missing = [name for name in ("trials", "max_environment_steps") if name not in value]
+        if missing:
+            raise ValueError("simulation config requires explicit " + ", ".join(missing))
         if "workload" in value and "benchmark" in value:
             raise ValueError("provide workload or benchmark in a config, not both")
         if "benchmark" in value:

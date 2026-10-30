@@ -25,7 +25,8 @@ INVALID_COUNTS = (True, False, None, 0, -1, 2, 1.0, "1", [], {})
 
 def make_spec(options, **kwargs):
     return SimulationSpec(WorkloadSpec("demo", ["case"]),
-                          ModelSpec("scripted", request_options=options), **kwargs)
+                          ModelSpec("scripted", request_options=options),
+                          trials=6, max_environment_steps=15, **kwargs)
 
 
 class SingleCompletionValidationTests(unittest.TestCase):
@@ -121,7 +122,7 @@ class SingleCompletionTransportTests(unittest.TestCase):
                     WorkloadSpec("single_choice", ["case"], factory=FactorySpec(f"{plugin}:create_backend")),
                     ModelSpec("scripted", request_options=options,
                               transport=FactorySpec(f"{plugin}:create_client", {"path": str(calls)})),
-                    trials=2, max_total_tokens=100, output_dir=str(root / f"run-{index}"),
+                    trials=2, max_environment_steps=15, max_total_tokens=100, output_dir=str(root / f"run-{index}"),
                 )
                 result = simulate(spec).require_complete()
                 self.assertEqual(result.resources["api_calls"], 1)

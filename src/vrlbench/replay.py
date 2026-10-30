@@ -123,6 +123,14 @@ def wrap_run_episode(original: Callable[..., Any], *, gate: Mapping[str, Any],
     def run(*args: Any, **kwargs: Any) -> Any:
         # All public backends use the keyword actor contract. Preserve positional
         # callers too: the reference signature starts with actor.
+        if "total_trials" in kwargs:
+            total_trials = kwargs["total_trials"]
+        elif len(args) > 4:
+            total_trials = args[4]
+        else:
+            raise TypeError("total_trials is required")
+        if type(total_trials) is not int or total_trials < 1:
+            raise ValueError("total_trials must be a positive integer")
         actor = kwargs.get("actor") if "actor" in kwargs else args[0]
         metadata = dict(kwargs.get("metadata", args[8] if len(args) > 8 else None) or {})
         case_id = _case_id(metadata, benchmark)
@@ -140,7 +148,7 @@ def wrap_run_episode(original: Callable[..., Any], *, gate: Mapping[str, Any],
                 # those objects for this run instead of imposing a new protocol.
                 policies.append(lambda policy=policy: policy)
         proxy = _ActorProxy(actor, case_id=case_id,
-                            total_trials=int(kwargs.get("total_trials", args[4] if len(args) > 4 else 6)),
+                            total_trials=total_trials,
                             gate=gate, policy=policy)
         if "actor" in kwargs:
             kwargs["actor"] = proxy

@@ -155,7 +155,8 @@ class ReplayRecordingTests(unittest.TestCase):
             for value in (False, True, "true", 1, None):
                 with self.subTest(name=name, value=value):
                     spec = SimulationSpec(workload=WorkloadSpec(name, cases, params={"capture_observations": value}),
-                        model=ModelSpec("offline"), memory=MemorySpec("retry"), require_provider_usage=False)
+                        model=ModelSpec("offline"), memory=MemorySpec("retry"),
+                        trials=6, max_environment_steps=15, require_provider_usage=False)
                     if type(value) is not bool:
                         with self.assertRaisesRegex(ValueError, "capture_observations must be a boolean"):
                             spec.validate()

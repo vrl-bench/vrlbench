@@ -37,12 +37,14 @@ class _MethodController:
 
     def reset(self) -> None:
         self._ready = False
-        self._total_trials = 6
+        self._total_trials: int | None = None
         self._task_scope = str(self._metadata.get("task_scope") or "")
         self._environment_rules = str(self._metadata.get("basic_environment_rules") or "")
         self._contexts: dict[int, Any] = {}
 
     def set_total_budget(self, total_budget: int) -> None:
+        if type(total_budget) is not int or total_budget < 1:
+            raise ValueError("total_budget must be a positive integer")
         self._total_trials = total_budget
 
     def set_task_scope(self, scope: str) -> None:
@@ -64,6 +66,8 @@ class _MethodController:
 
     def _ensure_case(self) -> None:
         if not self._ready:
+            if self._total_trials is None:
+                raise RuntimeError("set_total_budget must be called before using a memory method")
             from vrlbench.methods import CaseConfig
 
             self.method.reset_case(CaseConfig(
@@ -453,7 +457,7 @@ def _validate_sdk_shared_source(spec: Mapping[str, Any]) -> None:
         if original.get(key) != spec.get(key):
             raise ValueError(f"Shared T1 SDK {key} differs")
     name = spec["benchmark"]["name"]
-    defaults = {"headless": True, "trial_seed_mode": "paired_trial"} if name == "miniwob" else {"max_actor_steps": 15}
+    defaults = {"headless": True, "trial_seed_mode": "paired_trial"} if name == "miniwob" else {"max_actor_steps": None}
     original_params = {**defaults, **original["benchmark"].get("params", {})}
     current_params = {**defaults, **spec["benchmark"].get("params", {})}
     if original_params != current_params:
@@ -491,7 +495,7 @@ def run_reference(spec: Mapping[str, Any], er_name: str, controller: str) -> lis
         from vrlbench.environments import webshop
 
         webshop.run(**common, sample_indices=list(cases), num_envs=len(cases),
-                    max_steps=params.get("max_actor_steps", 15), output_dir=str(output))
+                    max_steps=params.get("max_actor_steps"), output_dir=str(output))
         _require_finished(output)
         return _case_rows(output / "episodes.json")
     if name != "miniwob":
