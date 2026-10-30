@@ -90,9 +90,9 @@ class MethodTests(unittest.TestCase):
             with self.subTest(method=name), self.assertRaises(ValueError):
                 make_er_slot(name)
         with self.assertRaises(ValueError):
-            make_controller("lightweight_vex")
+            make_controller("unsupported_controller")
         with self.assertRaises(ValueError):
-            VEX2(trials=3, controller="lightweight_vex")
+            VEX2(trials=3, controller="unsupported_controller")
         self.assertIsNone(make_controller("none"))
         self.assertEqual(make_controller("dsst").method_id, "dsst")
         with self.assertRaisesRegex(ValueError, "gold or oracle"):

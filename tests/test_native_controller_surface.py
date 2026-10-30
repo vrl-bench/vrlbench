@@ -28,13 +28,13 @@ class NativeControllerSurface(unittest.TestCase):
         self.no_api.start()
         self.addCleanup(self.no_api.stop)
 
-    def test_retired_controller_and_spatial_parameter_are_not_accepted(self):
+    def test_unsupported_controller_and_spatial_parameter_are_not_accepted(self):
         for normalize in (self.miniwob._normalize_miniwob_controller,
                           self.webshop._normalize_webshop_controller):
             for name in ("none", "dsst"):
                 self.assertEqual(normalize(name.upper()), name)
             with self.assertRaisesRegex(ValueError, "none or dsst"):
-                normalize("lightweight_vex")
+                normalize("unsupported_controller")
         self.assertNotIn("spatial_mode", inspect.signature(self.miniwob.run).parameters)
 
     def run_native(self, benchmark, output, *, er="none", controller="none",
