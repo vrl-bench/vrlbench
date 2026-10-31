@@ -1,6 +1,6 @@
 from __future__ import annotations
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import hashlib
 from typing import Any, Callable, List, Mapping, Optional
 import vrlbench.runtime.prompts as P
@@ -79,7 +79,7 @@ def snapshot_controller_after_success(controller: Any | None) -> Optional[dict[s
     if callable(snapshot_gate) and (not bool(snapshot_gate())):
         return None
     return controller.snapshot()
-_HARNESS_TRIAL_METADATA_KEYS = frozenset({'policy_ao_steps', 'policy_evidence_schema_version', 'policy_trajectory_sha256', 'policy_trajectory_source'})
+_HARNESS_TRIAL_METADATA_KEYS = frozenset({'policy_ao_steps', 'policy_evidence_schema_version', 'policy_trajectory_sha256', 'policy_trajectory_source', 'actor_llm_usage'})
 
 def _bind_controller_task_scope(controller: Any | None, metadata: Mapping[str, Any]) -> None:
     """Bind a benchmark-declared decision problem without interpreting it."""
@@ -155,7 +155,7 @@ def _notify_controller_trial(controller: Any | None, *, trajectory: str,
              has_future_trial=has_future_trial, model=model,
              er_name=er_name, er_section=er_section)
 
-def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, actor_trajectory: str | None=None, success: bool, er_slot: ERSlot, model: str, total_trials: int, controller: Optional[InterEpisodeController]=None, metadata: Optional[dict[str, Any]]=None, trial_metadata: Optional[Mapping[str, Any]]=None, llm_usage: Optional[Mapping[str, Any]]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False) -> tuple[EpisodeResult, TokenUsageLedger]:
+def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, actor_trajectory: str | None=None, success: bool, er_slot: ERSlot, model: str, total_trials: int, controller: Optional[InterEpisodeController]=None, metadata: Optional[dict[str, Any]]=None, trial_metadata: Optional[Mapping[str, Any]]=None, llm_usage: Optional[Mapping[str, Any]]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False, on_trial: Callable[[EpisodeResult], None] | None=None) -> tuple[EpisodeResult, TokenUsageLedger]:
     """Restore a shared first trial and replay its post-failure lifecycle.
 
     The shared trial itself is produced once by the common no-memory actor.
@@ -228,6 +228,16 @@ def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, ac
         shared_trial_metadata['memory_actor_trajectory_transport'] = memory_transport
     else:
         memory_actor_trajectory = actor_trajectory
+    shared_trial_metadata['actor_llm_usage'] = dict(llm_usage or prefix_snapshot)
+    state_pre = active_controller.snapshot() if active_controller else None
+    initial_trial = TrialResult(trial=0, success=bool(success), trajectory=trajectory,
+        policy_trajectory=policy_trajectory, actor_trajectory=actor_trajectory,
+        controller_state_pre=state_pre, spatial_state_pre=state_pre,
+        trial_metadata=shared_trial_metadata, llm_usage=prefix_snapshot)
+    if on_trial is not None:
+        # The actual source trial survives even if this candidate's update fails.
+        pending = replace(initial_trial, trial_metadata={**shared_trial_metadata, 'memory_update_pending': True})
+        on_trial(EpisodeResult(trials=[pending], resource_usage=prefix_snapshot))
     lifecycle_metadata = {**loop_metadata, **shared_trial_metadata}
     has_future_trial = not success and total_trials > 1
     with _llm.token_budget_scope(ledger):
@@ -246,7 +256,9 @@ def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, ac
             has_future_trial=has_future_trial, model=model,
             er_name=er_slot.__class__.__name__, er_section=er_section)
     usage_snapshot = ledger.snapshot()
-    initial_trial = TrialResult(trial=0, success=bool(success), trajectory=trajectory, policy_trajectory=policy_trajectory, actor_trajectory=actor_trajectory, controller_state=snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None, spatial_state=snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None, trial_metadata=shared_trial_metadata, llm_usage=usage_snapshot)
+    state = snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None
+    initial_trial.controller_state = initial_trial.spatial_state = state
+    initial_trial.llm_usage = usage_snapshot
     return (EpisodeResult(trials=[initial_trial], resource_usage=usage_snapshot), ledger)
 
 def run_episode(actor: Callable[[], str], manager: Callable[[str], bool], er_slot: ERSlot, model: str, total_trials: int, controller: Optional[InterEpisodeController]=None, initial_result: Optional[EpisodeResult]=None, reset_state: bool=True, metadata: Optional[dict[str, Any]]=None, token_ledger: Optional[TokenUsageLedger]=None, max_total_tokens: Optional[int]=None, require_provider_usage: bool=False, on_trial: Callable[[EpisodeResult], None] | None=None) -> EpisodeResult:
@@ -419,6 +431,9 @@ def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], 
             raise ValueError('actor protocol failure cannot contribute empty policy evidence')
         _observe_controller_trial_task(active_controller, trial_metadata.get('task') or (parse_policy_trajectory(policy_trajectory) or {}).get('task'))
         trial_metadata.update({'policy_ao_steps': policy_ao_steps, 'policy_evidence_schema_version': 1 if policy_trajectory_source == 'executed_actor_ao_hook' else None, 'policy_trajectory_sha256': hashlib.sha256(policy_trajectory.encode('utf-8')).hexdigest(), 'policy_trajectory_source': policy_trajectory_source})
+        # Keep the actor prefix separate from the method's post-failure update.
+        # Shared T1 imports this usage, then charges the new method's own update.
+        trial_metadata['actor_llm_usage'] = usage_ledger.delta(usage_before)
         if benchmark == 'miniwob' and trial_metadata.get('actor_profile') == 'react_batch':
             memory_actor_trajectory, memory_transport = intern_repeated_policy_observations(actor_trajectory, policy_trajectory)
             trial_metadata['memory_actor_trajectory_transport'] = memory_transport

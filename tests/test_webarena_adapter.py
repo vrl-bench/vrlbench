@@ -111,8 +111,8 @@ class WebArenaAdapterTests(unittest.TestCase):
                 replace(spec, workload=replace(spec.workload, params={**params, "judge_model": invalid})).validate()
         with self.assertRaisesRegex(ValueError, "reset_factory"):
             replace(spec, workload=replace(spec.workload, params={})).validate()
-        with self.assertRaisesRegex(ValueError, "shared first"):
-            replace(spec, shared_t1_dir=self.directory.name).validate()
+        with self.assertRaisesRegex(ValueError, "completed SDK"):
+            plan(replace(spec, shared_t1_dir=self.directory.name))
         relative = replace(spec, workload=replace(spec.workload, cases=[{**self.case, "config_file": "case.json"}]))
         self.assertEqual(relative.resolved(Path(self.directory.name)).workload.cases[0]["config_file"], str(self.path))
         case = {"case_id": self.case["case_id"], "task": "webarena",

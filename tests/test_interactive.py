@@ -80,6 +80,40 @@ def make_checkpoint_transport():
     return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
 
+def make_shared_method(*, mode="v0"):
+    """A complete local method: V0 exposes nothing; children use failed trials."""
+    from dataclasses import asdict
+    from vrlbench.methods import ActorContext, MemoryMethod
+
+    class Method(MemoryMethod):
+        def __init__(self):
+            self.resets = 0
+
+        def reset_case(self, config):
+            self.config, self.records = config, []
+            self.resets += 1
+
+        def context_for_trial(self, index):
+            if index and mode != "v0" and self.records:
+                return ActorContext(system="Retained trial: " + self.records[-1].trajectory)
+            return ActorContext()
+
+        def observe_trial(self, record):
+            self.records.append(record)
+            if mode == "broken" and not record.success:
+                raise RuntimeError("fixture memory update failed")
+            if mode == "writer" and not record.success and record.metadata["has_future_trial"]:
+                from vrlbench.runtime import llm
+                llm.complete("Summarize this failed trial.", model=self.config.model,
+                             retry_on_error=False)
+
+        def snapshot(self):
+            return {"mode": mode, "resets": self.resets,
+                    "records": [asdict(record) for record in self.records]}
+
+    return Method()
+
+
 class InteractiveActorTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -375,7 +409,7 @@ class InteractiveRunnerTests(unittest.TestCase):
 
     def test_shared_source_rejected_before_environment_creation(self):
         self.spec["shared_t1_dir"] = "/unused"
-        with self.assertRaisesRegex(ValueError, "independent first trials"):
+        with self.assertRaisesRegex(ValueError, "completed SDK evaluation"):
             run_cases(self.spec, self.runtime,
                       lambda case, params: self.fail("must not initialize environment"))
 
@@ -521,6 +555,129 @@ class InteractiveRunnerTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "image requests"):
                     llm.complete("current state", model="fixture", images=[png])
         self.assertEqual(len(calls), 1)
+
+
+@unittest.skipUnless(importlib.util.find_spec("openai") is not None, "requires runtime extra")
+class SharedInteractiveTrialTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.sessions, self.calls, self.created = {}, {}, {}
+
+    def run_record(self, label, *, mode="v0", source=None, benchmark="webarena",
+                   steps=1, succeeds=False, source_identity=None):
+        from vrlbench import FactorySpec, MemorySpec, ModelSpec, SimulationSpec, WorkloadSpec
+        from vrlbench.backends import BackendRuntime, memory_bindings
+        from vrlbench.results import SimulationResult, aggregate_cases
+        from vrlbench.runtime import llm
+
+        output = self.root / label
+        spec = SimulationSpec(
+            WorkloadSpec(benchmark, [{"case_id": "a"}]), ModelSpec("fixture"),
+            MemorySpec("local_method", method_factory=FactorySpec(
+                f"{Path(__file__).resolve()}:make_shared_method", {"mode": mode})),
+            trials=2, max_environment_steps=steps, output_dir=str(output),
+            shared_t1_dir=str(source.output_dir) if source is not None else None,
+            require_provider_usage=True,
+        ).to_dict()
+        session = self.sessions[label] = FakeSession(done=True, image=PNG)
+        session.evaluate = lambda: succeeds or session.actions[-1] == "finish"
+        if source_identity is not None:
+            session.source_identity = source_identity
+        calls = self.calls[label] = []
+        self.created[label] = 0
+        client = make_checkpoint_transport()
+        complete = client.chat.completions.create
+
+        def respond(**kwargs):
+            calls.append(kwargs)
+            response = complete(**kwargs)
+            system = kwargs["messages"][0]["content"]
+            response.choices[0].message.content = "finish" if "Retained trial:" in system else "look"
+            return response
+
+        def factory(case, params):
+            self.created[label] += 1
+            return session
+
+        client.chat.completions.create = respond
+        with memory_bindings(spec) as (er, controller, identity):
+            runtime = BackendRuntime(spec, er, controller)
+            with patch.object(llm, "get_client", return_value=client):
+                rows = run_cases(spec, runtime, factory)
+        result = SimulationResult({"status": "complete", "config": spec,
+            "output_dir": str(output), "cases": rows, "identity": {"plugins": identity},
+            **aggregate_cases(rows, spec["trials"])}).require_complete()
+        result.write(output / "evaluation.json")
+        (output / "request.json").write_text(json.dumps(spec))
+        return result
+
+    def test_v0_prefix_is_shared_but_candidate_memory_and_next_reset_are_its_own(self):
+        from vrlbench.replay_viewer import replay_data
+
+        source = self.run_record("source")
+        before = (source.output_dir / "evaluation.json").read_bytes()
+        result = self.run_record("child", mode="learn", source=source)
+        original = source.cases[0]["trials"][0]
+        first, second = result.cases[0]["trials"]
+        for key in ("trajectory", "policy_trajectory", "actor_trajectory",
+                    "context", "system_context", "user_context"):
+            self.assertEqual(first[key], original[key])
+        self.assertEqual(self.sessions["child"].resets, [1])
+        self.assertEqual(self.sessions["child"].actions, ["finish"])
+        self.assertEqual(len(self.calls["child"]), 1)
+        self.assertIn(original["policy_trajectory"], second["system_context"])
+        self.assertEqual(first["controller_state"]["mode"], "learn")
+        self.assertEqual(len(first["controller_state"]["records"]), 1)
+        self.assertEqual(second["controller_state"]["resets"], 1)
+        self.assertEqual([record["trial_index"] for record in second["controller_state"]["records"]], [0, 1])
+        self.assertEqual(result.resources["total_tokens"], 30)
+        self.assertEqual(first["trial_metadata"]["screenshots"], original["trial_metadata"]["screenshots"])
+        replay = replay_data([source.output_dir, result.output_dir])["runs"][1]
+        self.assertIsNotNone(replay["cases"][0]["trials"][0]["initial_image"])
+        self.assertEqual((source.output_dir / "evaluation.json").read_bytes(), before)
+
+    def test_actor_only_prefix_does_not_reuse_the_source_memory_writer_cost(self):
+        source = self.run_record("writer-source", mode="writer", benchmark="osworld")
+        source_first = source.cases[0]["trials"][0]
+        self.assertEqual(source_first["trial_metadata"]["actor_llm_usage"]["total_tokens"], 15)
+        self.assertEqual(source_first["llm_usage"]["total_tokens"], 30)
+        child = self.run_record("writer-child", mode="writer", source=source, benchmark="osworld")
+        self.assertEqual(self.sessions["writer-child"].resets, [1])
+        self.assertEqual(len(self.calls["writer-child"]), 2)  # Its own writer, then the T2 actor.
+        self.assertEqual(child.cases[0]["trials"][0]["llm_usage"]["total_tokens"], 30)
+        self.assertEqual(child.resources["total_tokens"], 45)
+
+        with self.assertRaisesRegex(RuntimeError, "memory update failed"):
+            self.run_record("broken-child", mode="broken", source=source, benchmark="osworld")
+        partial = json.loads((self.root / "broken-child/reference/episodes.json").read_text())[0]
+        self.assertEqual(len(partial["trials"]), 1)
+        self.assertEqual(partial["trials"][0]["actor_trajectory"], source_first["actor_trajectory"])
+        self.assertTrue(partial["trials"][0]["trial_metadata"]["memory_update_pending"])
+        self.assertEqual(self.sessions["broken-child"].resets, [])
+        self.assertEqual(self.calls["broken-child"], [])
+
+        solved = self.run_record("solved-source", benchmark="osworld", succeeds=True)
+        stopped = self.run_record("solved-child", mode="learn", source=solved, benchmark="osworld")
+        self.assertEqual(self.sessions["solved-child"].resets, [])
+        self.assertEqual(self.sessions["solved-child"].actions, [])
+        self.assertEqual(self.calls["solved-child"], [])
+        self.assertEqual(len(stopped.cases[0]["trials"]), 1)
+        self.assertEqual(stopped.resources["total_tokens"], 15)
+
+    def test_source_budget_and_actual_task_identity_must_match_before_new_actions(self):
+        source = self.run_record("source")
+        with self.assertRaisesRegex(ValueError, "max_environment_steps"):
+            self.run_record("wrong-budget", mode="learn", source=source, steps=2)
+        self.assertEqual(self.created["wrong-budget"], 0)
+        self.assertEqual(self.calls["wrong-budget"], [])
+        with self.assertRaisesRegex(ValueError, "identit"):
+            self.run_record("wrong-task", mode="learn", source=source,
+                            source_identity={"fixture": "changed task"})
+        self.assertEqual(self.sessions["wrong-task"].resets, [])
+        self.assertEqual(self.sessions["wrong-task"].actions, [])
+        self.assertEqual(self.calls["wrong-task"], [])
 
 
 if __name__ == "__main__":

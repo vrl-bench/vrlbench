@@ -353,7 +353,7 @@ class SimulationSpec:
         if len(set(identities)) != len(identities):
             raise ValueError("case selection contains duplicates")
         if self.shared_t1_dir is not None and not Path(self.shared_t1_dir).is_dir():
-            raise ValueError("shared_t1_dir must be an existing completed Retry directory")
+            raise ValueError("shared_t1_dir must be an existing completed source run directory")
         if not isinstance(self.runtime_env, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in self.runtime_env.items()):
             raise ValueError("runtime_env must map environment names to strings")
         for key in self.runtime_env:
@@ -365,8 +365,6 @@ class SimulationSpec:
 
     def _validate_interactive_workload(self) -> None:
         name, params = self.workload.name, self.workload.params
-        if self.shared_t1_dir is not None:
-            raise ValueError(f"{name} does not yet import shared first trials; run independent trials with matched budgets")
         if name == "webarena":
             if "judge_model" in params and (not isinstance(params["judge_model"], str) or not params["judge_model"].strip()):
                 raise ValueError("WebArena judge_model must be a nonempty model name")

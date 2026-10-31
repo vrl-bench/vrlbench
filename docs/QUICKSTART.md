@@ -336,9 +336,10 @@ your local selection. Paths resolve from the configuration file's directory.
 Run `--plan` to check the declaration without starting an environment or model.
 For memory comparisons, copy a Retry configuration, change `memory` and
 `output_dir`, and keep the model, cases, reset rules, and budgets fixed.
-These two adapters execute independent first trials and do not import
-`shared_t1_dir`. Reflexion uses a domain-neutral writer adaptation here;
-the existing MiniWoB and WebShop prompt routes are unchanged.
+Set `shared_t1_dir` to the completed Retry run to reuse its actual first trials
+and start each method's new environment interactions at T2. Reflexion uses a
+domain-neutral writer adaptation here; the existing MiniWoB and WebShop prompt
+routes are unchanged.
 An empty or syntactically invalid response consumes one action opportunity
 without executing an environment action. The actor receives the rejection
 reason and continues while its per-trial budget remains.

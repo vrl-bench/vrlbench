@@ -39,6 +39,11 @@ def plan(spec: SimulationSpec) -> dict[str, Any]:
 def _validate_shared_source(spec: SimulationSpec) -> None:
     if spec.shared_t1_dir is None:
         return
+    if spec.workload.name in {"webarena", "osworld"}:
+        from ._shared_t1 import load_shared_first_trials
+
+        load_shared_first_trials(spec.to_dict())
+        return
     sdk_result = Path(spec.shared_t1_dir) / "evaluation.json"
     if not sdk_result.is_file():
         return  # Original native sources are checked by the unchanged reference loader.

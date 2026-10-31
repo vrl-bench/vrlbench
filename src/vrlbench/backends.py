@@ -280,19 +280,36 @@ class BackendRuntime:
         return make_controller(self.controller, allow_gold_feedback=False, model=self.model)
 
     def run_episode(self, actor: Any, manager: Any, *, metadata: Mapping[str, Any] | None = None,
-                    on_trial: Callable[[Any], None] | None = None) -> Any:
-        from vrlbench.runtime.loop import run_episode
+                    on_trial: Callable[[Any], None] | None = None,
+                    shared_trial: Mapping[str, Any] | None = None) -> Any:
+        from vrlbench.runtime.loop import prepare_shared_t1, run_episode
 
         loop_metadata = {"benchmark": self.spec["benchmark"]["name"], **dict(metadata or {})}
         controller = self.make_controller()
         if isinstance(controller, _MethodController):
             controller.bind_case_metadata(loop_metadata)
-        return run_episode(actor=actor, manager=manager, er_slot=self.make_memory(),
-                           controller=controller, model=self.model,
-                           total_trials=self.trials, metadata=loop_metadata,
-                           max_total_tokens=self.spec.get("max_total_tokens"),
-                           require_provider_usage=bool(self.spec.get("require_provider_usage", False)),
-                           on_trial=on_trial)
+        memory = self.make_memory()
+        common = dict(controller=controller, er_slot=memory, model=self.model,
+                      total_trials=self.trials, metadata=loop_metadata,
+                      require_provider_usage=bool(self.spec.get("require_provider_usage", False)))
+        if shared_trial is None:
+            return run_episode(actor=actor, manager=manager, **common,
+                               max_total_tokens=self.spec.get("max_total_tokens"), on_trial=on_trial)
+        memory.reset()
+        if controller is not None:
+            controller.reset()
+        prefix, ledger = prepare_shared_t1(
+            **common, trajectory=shared_trial["trajectory"],
+            policy_trajectory=shared_trial["policy_trajectory"],
+            actor_trajectory=shared_trial["actor_trajectory"],
+            success=shared_trial["success"], trial_metadata=shared_trial["trial_metadata"],
+            llm_usage=shared_trial["llm_usage"], max_total_tokens=self.spec.get("max_total_tokens"),
+            on_trial=on_trial,
+        )
+        if on_trial is not None:
+            on_trial(prefix)
+        return run_episode(actor=actor, manager=manager, **common, initial_result=prefix,
+                           reset_state=False, token_ledger=ledger, on_trial=on_trial)
 
     def run_reference(self) -> list[dict[str, Any]]:
         """Execute an original MiniWoB/WebShop runner with these bindings."""

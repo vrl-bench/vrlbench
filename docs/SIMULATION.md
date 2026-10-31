@@ -68,9 +68,11 @@ service failures propagate as execution errors, not task failures.
 | WebArena | Restore website data through a required reset callback, then reset the browser; use the official task evaluator | [WebArena](QUICKSTART.md#use-webarena) |
 | OSWorld | Restore the VM snapshot and task configuration; use native `evaluate()` for success | [OSWorld](QUICKSTART.md#use-osworld) |
 
-The two additional online adapters currently execute independent first
-trials, rather than importing a shared T1. Keep cases, initial-state restoration,
-models, and budgets identical when comparing memory methods.
+Both adapters can reuse recorded first trials through `shared_t1_dir`. Point it
+to a completed run with empty first-trial memory context and matching cases,
+models, reset settings, and budgets. Each method processes the same first-trial
+experience with its own memory implementation and continues from a fresh T2
+reset. Without `shared_t1_dir`, each run executes its own first trial.
 
 The overview calls the retained within-case trial history a **replay buffer**.
 Failed executed traces accumulate across trials, and the memory method controls

@@ -352,8 +352,9 @@ def make_actor(session: Session, *, model: str, max_environment_steps: int,
 def run_cases(spec: Mapping[str, Any], runtime: Any,
               make_session: Callable[[Mapping[str, Any], dict[str, Any]], Session]) -> list[dict[str, Any]]:
     """Run explicitly selected cases with fresh memory and reliable cleanup."""
-    if spec.get("shared_t1_dir") is not None:
-        raise ValueError("these adapters currently execute independent first trials; shared_t1_dir is unsupported")
+    from vrlbench._shared_t1 import load_shared_first_trials
+
+    shared = load_shared_first_trials(spec) if spec.get("shared_t1_dir") is not None else {}
     benchmark = spec["benchmark"]
     params = {**dict(benchmark.get("params", {})),
               "max_environment_steps": int(spec["max_environment_steps"])}
@@ -392,11 +393,22 @@ def run_cases(spec: Mapping[str, Any], runtime: Any,
         actor = None
         failure = None
         try:
+            source = shared.get(case_id)
+            shared_trial = source["trial"] if source is not None else None
+            if source is not None:
+                if (source["source_identity"] != record["source_identity"]
+                        or source["task"] != record["task"]
+                        or shared_trial["trial_metadata"].get("source_identity") != record["source_identity"]):
+                    raise ValueError(f"{case_id}: shared first-trial task/environment identities differ")
             actor = make_actor(session, model=runtime.model,
                                max_environment_steps=int(spec["max_environment_steps"]),
                                artifact_dir=artifact_dir,
                                capture_observations=params.get("capture_observations", False),
                                on_progress=checkpoint_progress)
+            if shared_trial is not None:
+                # Check the next fresh reset against the recorded first trial too.
+                actor.identity = shared_trial["trial_metadata"]["case_identity"]
+                actor.task = shared_trial["trial_metadata"]["task"]
             metadata = {"benchmark": benchmark["name"], "case_id": case_id,
                         "task_scope": str(getattr(session, "task_scope", "Complete this task through repeated attempts.")),
                         "basic_environment_rules": session.basic_rules,
@@ -417,12 +429,13 @@ def run_cases(spec: Mapping[str, Any], runtime: Any,
                 record.update(case_record(episode))
                 write_checkpoint([*rows, record])
 
+            continuation = {"shared_trial": shared_trial} if shared_trial is not None else {}
             episode = runtime.run_episode(actor, lambda _trace: actor.success,
-                                          metadata=metadata, on_trial=checkpoint_trial)
+                                          metadata=metadata, on_trial=checkpoint_trial, **continuation)
             row = case_record(episode)
         except Exception as exc:
             failure = exc
-            if actor is not None:
+            if actor is not None and actor.trial_index == len(record["trials"]):
                 try:
                     actor.checkpoint_interrupted(exc)
                 except Exception as checkpoint_error:

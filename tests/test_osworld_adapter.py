@@ -151,8 +151,8 @@ class OSWorldAdapterTests(unittest.TestCase):
             replace(spec, workload=replace(spec.workload, params={})).validate()
         with self.assertRaisesRegex(ValueError, "screenshot"):
             replace(spec, max_total_tokens=100).validate()
-        with self.assertRaisesRegex(ValueError, "shared first"):
-            replace(spec, shared_t1_dir=self.temporary.name).validate()
+        with self.assertRaisesRegex(ValueError, "completed SDK"):
+            plan(replace(spec, shared_t1_dir=self.temporary.name))
         with self.assertRaisesRegex(ValueError, "snapshot"):
             replace(spec, workload=replace(spec.workload, params={"env_kwargs": {**self.params["env_kwargs"], "snapshot_name": ""}})).validate()
         case = {"case_id": self.case["case_id"], "task": "osworld",

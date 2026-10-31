@@ -274,8 +274,14 @@ slot, set `interface="memory"`, `factory="create_memory"`, and optionally
 `factory_kwargs={...}`. Only the memory binding changes: the workload, model,
 trial and interaction limits, replay gate, and shared-first-trial source remain
 as supplied. Provider-accounted MiniWoB and WebShop memory comparisons require
-a compatible completed Retry source. WebArena and OSWorld currently execute
-independent first trials: leave `shared_t1_dir` unset for those workloads.
+a compatible completed Retry source. WebArena and OSWorld also support
+`shared_t1_dir`: keep it pointing to the original V0 run while changing the
+comparison `reference` to each version's actual parent. V0 can be an empty
+`MemoryMethod` implementation. The simulator reuses its recorded first-trial
+actions, observations, outcome, and actor usage, then applies each candidate's
+own memory update before a fresh T2 reset. It does not copy V0's memory state.
+New runs record actor usage separately from post-trial memory calls; older
+custom-method sources without that separation must be rerun.
 
 A supplied `reference` can be a `SimulationResult`, run directory, or result
 file. It must be complete and compatible; another memory method can be the
