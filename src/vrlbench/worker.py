@@ -212,6 +212,10 @@ def execute_request(spec: Mapping[str, Any]) -> dict[str, Any]:
         with memory_bindings(spec) as (er_name, controller, memory_identity):
             cases, backend_identity = run_backend(spec, er_name, controller)
         cases = _validate_cases(cases, int(spec["trials"]))
+        if spec.get("actor", {}).get("name") == "openhands":
+            if any(trial.get("trial_metadata", {}).get("actor_name") != "openhands"
+                   for case in cases for trial in case["trials"]):
+                raise ValueError("The backend did not execute the requested OpenHands actor")
         json.dumps(cases, allow_nan=False)
         requested = expected_case_ids(spec["benchmark"])
         observed = {case["case_id"] for case in cases}
@@ -225,6 +229,16 @@ def execute_request(spec: Mapping[str, Any]) -> dict[str, Any]:
             environment_identity = json.loads(native_summary.read_text()).get("environment_identity")
             if environment_identity is not None:
                 run_identity["environment"] = environment_identity
+        if spec["benchmark"]["name"] == "webshop" and "environment" not in run_identity:
+            digests = {case.get("source_identity", {}).get("source_data_index_root_sha256")
+                       for case in cases}
+            if len(digests) != 1:
+                raise ValueError("WebShop cases used different data/index versions")
+            digest = next(iter(digests), None)
+            if digest is not None:
+                run_identity["environment"] = {
+                    "benchmark": "webshop", "source_data_index_root_sha256": digest,
+                }
         return {"schema_version": 1, "status": "complete", "cases": cases, "error": None,
                 "identity": run_identity}
     except ModuleNotFoundError as exc:

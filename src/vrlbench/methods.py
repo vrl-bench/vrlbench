@@ -11,6 +11,9 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
+import hashlib
+from pathlib import Path
+import re
 from threading import RLock
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -37,6 +40,49 @@ class TrialRecord:
     success: bool
     actor_trajectory: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def image_observations(self) -> list[tuple[int, bytes]]:
+        """Read the original images seen by the actor, in observation order."""
+        return load_observation_images(self.metadata)
+
+
+def load_observation_images(metadata: Mapping[str, Any]) -> list[tuple[int, bytes]]:
+    """Load actor inputs, never the separate text-actor replay captures.
+
+    Each reference is bound to its trial artifact directory and content hash.
+    Missing or changed images are errors, not a silent text-only fallback.
+    """
+    references = metadata.get("screenshots", [])
+    if not references:
+        return []
+    if not isinstance(references, list):
+        raise TypeError("screenshots must contain recorded image references")
+    root_value = metadata.get("visual_observation_root")
+    if not isinstance(root_value, str) or not root_value.strip():
+        raise ValueError("visual observations lack their trusted artifact root; rerun or import a verified shared first trial")
+    root = Path(root_value).resolve(strict=True)
+    images = []
+    previous = -1
+    for reference in references:
+        if not isinstance(reference, Mapping):
+            raise TypeError("a visual observation reference must be a mapping")
+        index = reference.get("observation_index")
+        if type(index) is not int or index <= previous:
+            raise ValueError("visual observation indices must be nonnegative and strictly increasing")
+        path = Path(reference["path"]).resolve(strict=True)
+        if not path.is_relative_to(root):
+            raise ValueError("visual observation is outside its trial artifact directory")
+        expected = reference.get("sha256")
+        if not isinstance(expected, str) or re.fullmatch(r"[0-9a-fA-F]{64}", expected) is None:
+            raise ValueError("visual observation lacks a valid content hash")
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected.lower():
+            raise ValueError("visual observation content hash differs")
+        if not raw.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")):
+            raise ValueError("visual observations must be original PNG or JPEG images")
+        images.append((index, raw))
+        previous = index
+    return images
 
 
 @dataclass(frozen=True)

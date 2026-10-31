@@ -12,7 +12,7 @@ from pathlib import Path
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
-from ._comparison import comparable_workload
+from ._comparison import comparable_actor, comparable_workload, recorded_condenser_identity
 
 
 RESOURCE_FIELDS = (
@@ -320,7 +320,8 @@ def _comparison_context(payload: Mapping[str, Any]) -> dict:
         raise ValueError("comparison requires declared model, benchmark, and trial budget")
     if "trials" in config and config["trials"] != trials:
         raise ValueError("result and config disagree on the trial budget")
-    context = {"model": model, "benchmark": benchmark, "trials": trials}
+    context = {"model": model, "benchmark": benchmark, "trials": trials,
+               "actor": comparable_actor(config.get("actor"))}
     for field in ("max_environment_steps", "max_actor_steps", "max_steps", "trial_seed_mode",
                   "max_total_tokens", "runtime_env"):
         context[field] = config.get(field, payload.get(field))
@@ -335,8 +336,12 @@ def _component_identity_check(payloads: Sequence[Mapping[str, Any]], context: di
     components without plugin factories are outside this source-hash check.
     """
     roles = ("benchmark", "model_transport")
+    condensers = [recorded_condenser_identity(payload) for payload in payloads]
+    if ((context.get("actor") or {}).get("params", {}).get("condenser") is not None
+            or any(identity is not None for identity in condensers)):
+        roles += ("actor_condenser",)
     sources = []
-    for payload in payloads:
+    for payload, condenser in zip(payloads, condensers):
         identity = payload.get("identity")
         if identity is None:
             identity = {}
@@ -361,11 +366,14 @@ def _component_identity_check(payloads: Sequence[Mapping[str, Any]], context: di
                                        or any(char not in "0123456789abcdefABCDEF" for char in digest)):
                 raise ValueError(f"recorded {role} source_sha256 must be a SHA-256 digest")
             recorded[role] = digest.lower() if digest is not None else None
+        if condenser is not None:
+            recorded["actor_condenser"] = condenser["source_sha256"].lower()
         sources.append(recorded)
 
     factories = {
         "benchmark": context["benchmark"].get("factory") if isinstance(context["benchmark"], Mapping) else None,
         "model_transport": context["model"].get("transport") if isinstance(context["model"], Mapping) else None,
+        "actor_condenser": (context.get("actor") or {}).get("params", {}).get("condenser"),
     }
     components = {}
     for role in roles:
@@ -419,17 +427,26 @@ def _environment_identity_check(payloads: Sequence[Mapping[str, Any]], context: 
                   and benchmark.get("factory") is None)
     for index, payload in enumerate(payloads):
         environment = (payload.get("identity") or {}).get("environment")
-        if environment is None:
+        cases = payload.get("cases", [])
+        case_environments = [case["source_identity"] for case in cases
+                             if isinstance(case.get("source_identity"), Mapping)
+                             and "source_data_index_root_sha256" in case["source_identity"]]
+        if environment is None and len(case_environments) != len(cases):
             missing.append(index)
+        environments = ([environment] if environment is not None else []) + case_environments
+        if not environments:
+            if index not in missing:
+                missing.append(index)
             continue
         applicable = True
-        if not isinstance(environment, Mapping) or environment.get("benchmark") != "webshop":
-            raise ValueError("recorded environment identity must describe WebShop")
-        digest = environment.get("source_data_index_root_sha256")
-        if (not isinstance(digest, str) or len(digest) != 64
-                or any(char not in "0123456789abcdefABCDEF" for char in digest)):
-            raise ValueError("recorded WebShop source/data/index identity must be a SHA-256 digest")
-        digests.add(digest.lower())
+        for identity in environments:
+            if not isinstance(identity, Mapping) or identity.get("benchmark") != "webshop":
+                raise ValueError("recorded environment identity must describe WebShop")
+            digest = identity.get("source_data_index_root_sha256")
+            if (not isinstance(digest, str) or len(digest) != 64
+                    or any(char not in "0123456789abcdefABCDEF" for char in digest)):
+                raise ValueError("recorded WebShop source/data/index identity must be a SHA-256 digest")
+            digests.add(digest.lower())
     if len(digests) > 1:
         raise ValueError("results have different WebShop source/data/index identities")
     return {"scope": "recorded_native_webshop_source_data_index",

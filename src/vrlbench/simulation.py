@@ -21,7 +21,7 @@ from .specs import SimulationSpec
 from .results import SimulationResult, aggregate_cases
 from .provider_usage import JOURNAL_NAME, merge_provider_resources, read_provider_usage
 from ._version import __version__
-from ._comparison import comparable_workload
+from ._comparison import comparable_actor, comparable_workload
 
 
 def plan(spec: SimulationSpec) -> dict[str, Any]:
@@ -39,7 +39,7 @@ def plan(spec: SimulationSpec) -> dict[str, Any]:
 def _validate_shared_source(spec: SimulationSpec) -> None:
     if spec.shared_t1_dir is None:
         return
-    if spec.workload.name in {"webarena", "osworld"}:
+    if spec.actor.name == "openhands" or spec.workload.name in {"webarena", "osworld"}:
         from ._shared_t1 import load_shared_first_trials
 
         load_shared_first_trials(spec.to_dict())
@@ -51,10 +51,12 @@ def _validate_shared_source(spec: SimulationSpec) -> None:
     if baseline.get("memory", {}).get("name") != "retry" or baseline.get("memory", {}).get("factory") is not None:
         raise ValueError("shared_t1_dir must identify a completed memory-free Retry run")
     current = spec.to_dict()
-    for field in ("model", "benchmark", "trials", "max_environment_steps", "runtime_env", "require_provider_usage"):
-        previous, requested = baseline.get(field), current[field]
+    for field in ("actor", "model", "benchmark", "trials", "max_environment_steps", "runtime_env", "require_provider_usage"):
+        previous, requested = baseline.get(field), current.get(field)
         if field == "benchmark":
             previous, requested = comparable_workload(previous), comparable_workload(requested)
+        if field == "actor":
+            previous, requested = comparable_actor(previous), comparable_actor(requested)
         if previous != requested:
             raise ValueError(f"shared first-trial source has different {field}")
 

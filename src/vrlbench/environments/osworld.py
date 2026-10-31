@@ -253,12 +253,50 @@ class OSWorldSession:
     def step(self, action: str) -> Transition:
         if not self._active or self._closed:
             raise RuntimeError("Reset the OSWorld task before stepping")
-        value, _reward, done, _info = self._env.step(_action(action), pause=self._pause)
+        action = _action(action)
+        execution = None
+        if action in {"DONE", "FAIL", "WAIT"}:
+            value, _reward, done, _info = self._env.step(action, pause=self._pause)
+        else:
+            # DesktopEnv discards the VM process result. Observe the same call
+            # rather than executing the program again or repairing its code.
+            controller = getattr(self._env, "controller", None)
+            execute = getattr(controller, "execute_python_command", None)
+            if not callable(execute):
+                raise RuntimeError("OSWorld requires a controller with execute_python_command()")
+            results = []
+
+            def observed_execute(*args, **kwargs):
+                result = execute(*args, **kwargs)
+                if (not isinstance(result, Mapping)
+                        or type(result.get("returncode")) is not int
+                        or not isinstance(result.get("output"), str)
+                        or not isinstance(result.get("error"), str)):
+                    raise RuntimeError("OSWorld returned no complete Python execution result")
+                results.append(deepcopy(dict(result)))
+                return result
+
+            controller.execute_python_command = observed_execute
+            try:
+                value, _reward, done, _info = self._env.step(action, pause=self._pause)
+            finally:
+                controller.execute_python_command = execute
+            if len(results) != 1:
+                raise RuntimeError("OSWorld must execute one Python program per action")
+            execution = results[0]
         if type(done) is not bool:
             raise TypeError("OSWorld step termination flag must be boolean")
+        observation = _observation(value)
+        if execution is not None:
+            observation = Observation(
+                text=(observation.text + "\n\nPython execution result "
+                      "(output is stdout; error is stderr):\n" +
+                      json.dumps(execution, ensure_ascii=False, allow_nan=False)),
+                image=observation.image,
+            )
         # Upstream reward is not task completion. Even FAIL can be the correct
         # terminal action for an infeasible task, so evaluation stays separate.
-        return Transition(observation=_observation(value), terminated=done)
+        return Transition(observation=observation, terminated=done)
 
     def evaluate(self) -> bool:
         if not self._active or self._closed:

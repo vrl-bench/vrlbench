@@ -14,7 +14,7 @@ over memory exposure. For installation and commands, start with the
 | Component | Owns | Implementation |
 |---|---|---|
 | Memory system | Extracting, retaining, reading, and scheduling experience | [`MemorySystem`](../src/vrlbench/memory.py) and reference methods |
-| Actor and model | Choosing actions from observations and supplied memory | [`ModelSpec`](../src/vrlbench/specs.py), model transport |
+| Actor and model | Choosing actions from observations and supplied memory | [`ActorSpec`, `ModelSpec`](../src/vrlbench/specs.py) |
 | Workload adapter | Task cases, environment interaction, resets, and outcomes | [`WorkloadSpec`](../src/vrlbench/specs.py), [`backends.py`](../src/vrlbench/backends.py) |
 | Simulation runtime | Worker isolation, complete trials, budgets, and result collection | [`simulation.py`](../src/vrlbench/simulation.py), [`worker.py`](../src/vrlbench/worker.py) |
 | Analysis | Reading behavior and comparing outcomes and resources | [`inspection.py`](../src/vrlbench/inspection.py), [`results.py`](../src/vrlbench/results.py) |
@@ -57,9 +57,54 @@ pyautogui code block is one native action. A response with no
 valid action also consumes one unit: the adapter records the rejected response,
 returns parser feedback without changing the environment, and continues while
 budget remains. Actual environment steps and rejected responses are counted
-separately in trial metadata. Success stops the case immediately; an environment
+separately in trial metadata. The adapter verifies success when a trial ends;
+a verified success stops the case without another trial. An environment
 terminal failure or an exhausted action budget ends the current trial. Model
 service failures propagate as execution errors, not task failures.
+
+OSWorld returns the VM program's stdout, stderr and exit code alongside the
+desktop observation. A Python error consumes the submitted action and remains
+visible to the actor; a missing execution response fails the run.
+
+### OpenHands actor
+
+The default actor is unchanged. To use the OpenHands SDK's tool-execution loop,
+install the optional integration in Python 3.12 or newer:
+
+```bash
+python -m pip install -e '.[runtime,openhands]'
+```
+
+Add this to a simulation configuration, or select it with `--actor openhands`:
+
+```json
+"actor": {"name": "openhands", "params": {"max_output_tokens": 1024}}
+```
+
+OpenHands receives the current observation and memory, then calls one controlled
+environment tool at a time. VRL-Bench still owns resets, action budgets, outcome
+verification and the outer trial loop. Each trial starts a fresh conversation;
+only the selected memory method carries experience into the next trial.
+Original SDK events are saved under each trial's `openhands/events.jsonl`.
+The replay shows the corresponding actions, observations and supplied memory.
+
+Image observations also reach memory methods as the original PNG/JPEG inputs.
+Reflexion receives these images in observation order; text-only actors retain
+their text-only memory inputs. Custom methods can read the same inputs through
+`TrialRecord.image_observations()`, which verifies their paths and content hashes.
+
+MiniWoB, WebShop, WebArena and OSWorld support this actor. If an environment
+needs a different Python version, set `workload.params.environment_python` to
+its interpreter; the environment runs in a separate process. For custom
+deployment setup, `workload.params.session_factory` accepts a trusted factory
+with signature `create_session(*, case, params, **kwargs)` returning a Session.
+
+An optional `actor.params.condenser` accepts a trusted FactorySpec. Its factory
+receives the accounted OpenHands `llm` and returns a `CondenserBase` instance.
+Model calls, including condensation, enter the same usage records. Compare runs
+with the same actor configuration; shared first trials cannot cross actors.
+The OpenHands integration currently uses a native SDK model client and does not
+accept `ModelSpec.transport` or a strict `max_total_tokens` ceiling.
 
 ### Additional workloads
 
@@ -93,6 +138,8 @@ saved memory context, action–observation trace, outcome, and usage.
 
 `vrlbench replay RUN --output replay.html` turns saved results into a
 self-contained, per-action browser viewer without rerunning models or tasks.
+Verified shared-first-trial sources are included automatically, so their
+recorded pages and screenshots remain visible when exporting the candidate.
 Native page capture is enabled explicitly with
 `workload.params.capture_observations: true`; otherwise the viewer uses saved
 observation text. Capture does not affect actor inputs, budgets, or scoring.

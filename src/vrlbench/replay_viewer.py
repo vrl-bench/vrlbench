@@ -113,13 +113,9 @@ def static_page_html(source: str) -> str:
             + "".join(parser.parts))
 
 
-def _snapshot(root: Path, original_root: str | None, item: dict, *,
+def _snapshot(root: Path, original_root: str | Path | None, item: dict, *,
               other_runs: Iterable[tuple[Path, Path | None]] = ()) -> tuple[str | None, str | None, str | None]:
-    """Read assets only from runs explicitly selected by the caller.
-
-    A shared first trial can reference the source Retry run. Its assets are
-    readable only when that run was also supplied, including after relocation.
-    """
+    """Read assets only from selected runs or a verified shared-trial source."""
     if item.get("kind") == "unavailable":
         return None, None, str(item.get("reason") or "Snapshot was not recorded")
     raw_path, expected = item.get("path"), item.get("sha256")
@@ -158,6 +154,59 @@ def _snapshot(root: Path, original_root: str | None, item: dict, *,
     return "data:" + mime + ";base64," + base64.b64encode(raw).decode("ascii"), None, None
 
 
+def _shared_snapshot_run(path: Path, case_id: str, trial: dict, *,
+                         selected: list[tuple[Path, SimulationResult]],
+                         cache: dict[Path, tuple[dict, str]]) -> tuple[Path, Path | None] | None:
+    """Authorize this trial's recorded source, without following source chains.
+
+    The result checksum binds the source metadata; matching the first trial
+    binds the requested images to that experience. Individual image checksums
+    and resolved-path containment are still checked by ``_snapshot``.
+    """
+    reference = (trial.get("trial_metadata") or {}).get("shared_t1_source")
+    if reference is None:
+        return None
+    if (not isinstance(reference, dict) or reference.get("case_id") != case_id
+            or not isinstance(reference.get("evaluation_path"), str)
+            or not isinstance(reference.get("result_sha256"), str)
+            or trial.get("trial") != 0):
+        raise ValueError("Cannot replay malformed shared first-trial source")
+    recorded_path = Path(reference["evaluation_path"])
+    if not recorded_path.is_absolute() or recorded_path.name != "evaluation.json":
+        raise ValueError("Shared first-trial source must name an absolute evaluation.json")
+    # Explicitly supplied runs also provide relocation mappings for old paths.
+    source = next((given for given, result in selected
+                   if given == recorded_path or (result.output_dir is not None
+                       and result.output_dir / "evaluation.json" == recorded_path)), recorded_path).resolve()
+    if source == path:
+        raise ValueError("A shared first trial cannot refer to its own run")
+    if not source.is_file():
+        return None  # Keep the text trace and the existing missing-source notice.
+    if source not in cache:
+        if source.stat().st_size > _MAX_REPORT_BYTES:
+            raise ValueError("Shared first-trial source exceeds the 64 MiB reading limit")
+        payload = SimulationResult.from_path(source).require_complete().to_dict()
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                                          ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+        cache[source] = payload, digest
+    payload, digest = cache[source]
+    if digest != reference["result_sha256"].lower():
+        raise ValueError("Shared first-trial source checksum does not match its record")
+    cases = [case for case in payload.get("cases", []) if case.get("case_id") == case_id]
+    if len(cases) != 1 or not cases[0].get("trials"):
+        raise ValueError("Shared first-trial source does not contain the recorded case")
+    original = cases[0]["trials"][0]
+    for field in ("trial", "success", "trajectory", "policy_trajectory", "actor_trajectory"):
+        if original.get(field) != trial.get(field):
+            raise ValueError(f"Shared first-trial source has a different {field}")
+    for field in ("replay_observations", "screenshots"):
+        if ((original.get("trial_metadata") or {}).get(field)
+                != (trial.get("trial_metadata") or {}).get(field)):
+            raise ValueError("Shared first-trial snapshot references differ from their source")
+    original_root = payload.get("output_dir")
+    return source.parent, Path(original_root) if original_root is not None else None
+
+
 def _invalid_events(metadata: dict, environment_steps: int) -> dict[int, list[dict]]:
     """Index explicit rejected responses, never infer them from actor prose."""
     events = metadata.get("invalid_action_events", [])
@@ -189,6 +238,7 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
         path = path / "evaluation.json" if path.is_dir() else path
         saved_runs.append((path, SimulationResult.from_path(path)))
     source_roots = [(path.parent, result.output_dir) for path, result in saved_runs]
+    source_cache: dict[Path, tuple[dict, str]] = {}
     runs = []
     for path, result in saved_runs:
         payload = result.to_dict()
@@ -222,6 +272,9 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
                                    for step in evidence["steps"])):
                         raise ValueError("Cannot replay malformed in-progress action observations")
                 metadata = row.get("trial_metadata") or {}
+                shared_root = _shared_snapshot_run(path, identity, row, selected=saved_runs,
+                                                   cache=source_cache)
+                snapshot_root, original_root = shared_root or (path.parent, payload.get("output_dir"))
                 memory = {key: deepcopy(row.get(key)) for key in
                           ("context", "system_context", "user_context")}
                 # Controller state is distinct from the exact actor input.
@@ -256,7 +309,7 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
                     for item in items:
                         if isinstance(item, dict) and type(item.get("observation_index")) is int:
                             snapshots[item["observation_index"]] = _snapshot(
-                                path.parent, payload.get("output_dir"), item, other_runs=source_roots)
+                                snapshot_root, original_root, item, other_runs=source_roots)
                     initial = snapshots.get(0, (None, None, None))
                     trial.update(initial_image=initial[0], initial_html=initial[1],
                                  initial_snapshot_notice=initial[2])

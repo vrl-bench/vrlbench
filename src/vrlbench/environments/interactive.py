@@ -50,6 +50,10 @@ class Session(Protocol):
     def close(self) -> None: ...
 
 
+class ObservationUnavailable(RuntimeError):
+    """A deliberately omitted POV capture, with a safe reader-facing reason."""
+
+
 class InteractiveActor:
     """One actor, with no cross-trial state except the verified case identity."""
 
@@ -129,10 +133,12 @@ class InteractiveActor:
         self.progress_error = {"type": type(error).__name__}
         self._checkpoint(self.progress_phase)
 
-    def _save_image(self, image: bytes, *, index: int) -> dict[str, Any]:
-        if not isinstance(image, bytes) or not image:
-            raise TypeError("an observation image must be nonempty bytes")
-        if image.startswith(b"\x89PNG\r\n\x1a\n"):
+    def _save_image(self, image: bytes | str, *, index: int) -> dict[str, Any]:
+        if isinstance(image, str) and image.strip():
+            image, suffix = image.encode("utf-8"), ".html"
+        elif not isinstance(image, bytes) or not image:
+            raise TypeError("an observation capture must be nonempty image bytes or HTML")
+        elif image.startswith(b"\x89PNG\r\n\x1a\n"):
             suffix = ".png"
         elif image.startswith(b"\xff\xd8\xff"):
             suffix = ".jpg"
@@ -154,8 +160,7 @@ class InteractiveActor:
         if value.image is not None:
             entry = self._save_image(value.image, index=index)
             self.screenshots.append(entry)
-            # This is a reference to the actual actor input, not a generated
-            # textual interpretation of the image. Memory gets text traces.
+            # Keep the actual visual input available to memory methods too.
             text += f"\nScreenshot: {entry['path']} (sha256={entry['sha256']})"
         elif self.capture_observations:
             # A text actor's POV recording must not change its model input.
@@ -163,7 +168,12 @@ class InteractiveActor:
             try:
                 if not callable(capture):
                     raise NotImplementedError("session has no screenshot capture hook")
-                entry = {**self._save_image(capture(), index=index), "kind": "image"}
+                captured = capture()
+                entry = {**self._save_image(captured, index=index),
+                         "kind": "html" if isinstance(captured, str) else "image"}
+            except ObservationUnavailable as exc:
+                entry = {"observation_index": index, "kind": "unavailable",
+                         "reason": str(exc)}
             except Exception as exc:
                 entry = {"observation_index": index, "kind": "unavailable",
                          "reason": "capture failed: " + type(exc).__name__}
@@ -181,7 +191,9 @@ class InteractiveActor:
                 or not state.task.strip() or not isinstance(state.identity, str)
                 or not state.identity.strip()):
             raise ValueError("adapter reset must identify a nonempty task and case")
-        if self.identity is not None and (state.identity != self.identity or state.task != self.task):
+        allows_task_variation = getattr(self.session, "allows_task_variation", False) is True
+        if self.identity is not None and (state.identity != self.identity or
+                                         (state.task != self.task and not allows_task_variation)):
             raise ValueError("adapter reset changed the task identity between trials")
         self.identity, self.task = state.identity, state.task
         initial = self._observation(state.observation, index=0)
@@ -226,6 +238,54 @@ class InteractiveActor:
                 raise TypeError("adapter parse_response() must return a nonempty action string")
         return action
 
+    def _reject_action(self, raw: str, reason: str) -> str:
+        """Record one unusable model reply without inventing an environment step."""
+        before = self.ledger.action_attempts
+        self.ledger.charge_invalid_action()
+        self.invalid_action_events.append({
+            "after_environment_step": self.ledger.steps,
+            "raw_response": raw, "reason": reason,
+            "budget_used_before": before,
+            "budget_used_after": self.ledger.action_attempts})
+        feedback = (f"Invalid action response: {reason}. No environment action was executed; "
+                    "the observation is unchanged. One action opportunity was consumed; "
+                    f"{self.ledger.remaining_steps} remain. Return one valid environment action.")
+        self.messages.append(f"[USER/parser_feedback]\n{feedback}")
+        self._checkpoint("invalid_action")
+        return feedback
+
+    def _dispatch_action(self, action: str, *, raw_response: str) -> tuple[Observation, str]:
+        """Execute exactly one admitted native action through the shared session."""
+        assert self.evidence is not None
+        self.ledger.require_step()
+        self.pending_action = {
+            "action": action, "raw_response": raw_response,
+            "before_observation": (self.evidence["steps"][-1]["observation"]
+                                   if self.evidence["steps"] else
+                                   self.evidence["initial_observation"]),
+            "budget_used_before": self.ledger.action_attempts,
+            "environment_steps_before": self.ledger.steps,
+        }
+        self._checkpoint("awaiting_environment_feedback")
+        transition = self.session.step(action)
+        if (not isinstance(transition, Transition)
+                or type(transition.terminated) is not bool
+                or type(transition.truncated) is not bool
+                or (transition.terminated and transition.truncated)):
+            raise ValueError("adapter step must return a valid Transition")
+        observation = transition.observation
+        text = self._observation(observation, index=self.ledger.steps + 1)
+        self.ledger.charge_step()
+        self.evidence["steps"].append({"action": action, "observation": text})
+        self.messages.append(f"[USER/environment_feedback]\nExecuted action: {action}\nObservation:\n{text}")
+        self.pending_action = None
+        self._checkpoint("environment_feedback")
+        if transition.terminated or transition.truncated or not self.ledger.remaining_steps:
+            self._finish(terminated=transition.terminated,
+                         truncated=(transition.truncated or not self.ledger.remaining_steps)
+                         and not transition.terminated)
+        return observation, text
+
     def __call__(self) -> str:
         # The loop binds memory immediately before calling the actor. A
         # controller may have prepared the reset state earlier, without it.
@@ -255,49 +315,12 @@ class InteractiveActor:
             try:
                 action = self._action_from_response(raw)
             except ValueError as exc:
-                reason = str(exc)
-                before = self.ledger.action_attempts
-                self.ledger.charge_invalid_action()
-                self.invalid_action_events.append({
-                    "after_environment_step": self.ledger.steps,
-                    "raw_response": raw, "reason": reason,
-                    "budget_used_before": before,
-                    "budget_used_after": self.ledger.action_attempts})
-                feedback = (f"Invalid action response: {reason}. No environment action was executed; "
-                            "the observation is unchanged. One action opportunity was consumed; "
-                            f"{self.ledger.remaining_steps} remain. Return one valid environment action.")
-                self.messages.append(f"[USER/parser_feedback]\n{feedback}")
+                feedback = self._reject_action(raw, str(exc))
                 history += f"\nRejected response: {raw}\n{feedback}"
-                self._checkpoint("invalid_action")
                 continue
-            self.ledger.require_step()
-            self.pending_action = {
-                "action": action, "raw_response": raw,
-                "before_observation": (self.evidence["steps"][-1]["observation"]
-                                       if self.evidence["steps"] else
-                                       self.evidence["initial_observation"]),
-                "budget_used_before": self.ledger.action_attempts,
-                "environment_steps_before": self.ledger.steps,
-            }
-            self._checkpoint("awaiting_environment_feedback")
-            transition = self.session.step(action)
-            if (not isinstance(transition, Transition)
-                    or type(transition.terminated) is not bool
-                    or type(transition.truncated) is not bool
-                    or (transition.terminated and transition.truncated)):
-                raise ValueError("adapter step must return a valid Transition")
-            observation = transition.observation
-            text = self._observation(observation, index=self.ledger.steps + 1)
-            self.ledger.charge_step()
-            self.evidence["steps"].append({"action": action, "observation": text})
-            self.messages.append(f"[USER/environment_feedback]\nExecuted action: {action}\nObservation:\n{text}")
+            observation, text = self._dispatch_action(action, raw_response=raw)
             history += f"\nAction: {action}\nObservation:\n{text}"
-            self.pending_action = None
-            self._checkpoint("environment_feedback")
-            if transition.terminated or transition.truncated or not self.ledger.remaining_steps:
-                self._finish(terminated=transition.terminated,
-                             truncated=(transition.truncated or not self.ledger.remaining_steps)
-                             and not transition.terminated)
+            if self.close_reason != "running":
                 break
         if self.close_reason == "running":
             self._finish(terminated=False, truncated=True)
@@ -316,7 +339,9 @@ class InteractiveActor:
         return self._metadata_snapshot()
 
     def _metadata_snapshot(self) -> dict[str, Any]:
-        return {**self.ledger.snapshot(), "task": self.task, "case_identity": self.identity,
+        visual = ({"visual_observation_root": str((self.artifact_dir / f"trial_{self.trial_index:03d}").resolve())}
+                  if self.screenshots else {})
+        return {**self.ledger.snapshot(), **visual, "task": self.task, "case_identity": self.identity,
                 "source_identity": deepcopy(getattr(self.session, "source_identity", {})),
                 "llm_usage_instrumented": self.llm_usage_instrumented,
                 "protocol_failure": self.protocol_failure,
@@ -343,19 +368,40 @@ class InteractiveActor:
 def make_actor(session: Session, *, model: str, max_environment_steps: int,
                artifact_dir: str | Path, capture_observations: bool = False,
                llm_fn: Callable[..., str] | None = None,
-               on_progress: Callable[[dict[str, Any]], None] | None = None) -> InteractiveActor:
+               on_progress: Callable[[dict[str, Any]], None] | None = None,
+               actor_name: str = "react", actor_params: Mapping[str, Any] | None = None,
+               sdk_model_config: Mapping[str, Any] | None = None,
+               sdk_llm_factory: Callable[..., Any] | None = None,
+               sdk_request_observer: Any = None) -> InteractiveActor:
+    if actor_name == "openhands":
+        if llm_fn is not None:
+            raise ValueError("OpenHands uses its native SDK LLM, not llm_fn")
+        from vrlbench.actors.openhands import OpenHandsActor
+
+        return OpenHandsActor(
+            session, model=model, max_environment_steps=max_environment_steps,
+            artifact_dir=artifact_dir, capture_observations=capture_observations,
+            on_progress=on_progress, actor_params=actor_params,
+            sdk_model_config=sdk_model_config, sdk_llm_factory=sdk_llm_factory,
+            sdk_request_observer=sdk_request_observer)
+    if actor_name != "react":
+        raise ValueError(f"unknown actor {actor_name!r}; choose react or openhands")
+    if actor_params:
+        raise ValueError("react actor does not accept actor_params")
     return InteractiveActor(session, model=model, max_environment_steps=max_environment_steps,
                             artifact_dir=artifact_dir, capture_observations=capture_observations,
                             llm_fn=llm_fn, on_progress=on_progress)
 
 
 def run_cases(spec: Mapping[str, Any], runtime: Any,
-              make_session: Callable[[Mapping[str, Any], dict[str, Any]], Session]) -> list[dict[str, Any]]:
+              make_session: Callable[[Mapping[str, Any], dict[str, Any]], Session], *,
+              cases: list[Mapping[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Run explicitly selected cases with fresh memory and reliable cleanup."""
     from vrlbench._shared_t1 import load_shared_first_trials
 
     shared = load_shared_first_trials(spec) if spec.get("shared_t1_dir") is not None else {}
     benchmark = spec["benchmark"]
+    selected_cases = benchmark["cases"] if cases is None else cases
     params = {**dict(benchmark.get("params", {})),
               "max_environment_steps": int(spec["max_environment_steps"])}
     output = Path(spec["output_dir"]) / "reference"
@@ -368,13 +414,13 @@ def run_cases(spec: Mapping[str, Any], runtime: Any,
         temporary.replace(output / "episodes.json")
 
     identifiers = []
-    for case in benchmark["cases"]:
+    for case in selected_cases:
         if not isinstance(case, Mapping) or not isinstance(case.get("case_id"), str) or not case["case_id"].strip():
             raise ValueError("interactive cases must contain a nonempty case_id")
         identifiers.append(case["case_id"])
     if len(set(identifiers)) != len(identifiers):
         raise ValueError("interactive selection contains duplicate case_id values")
-    for case in benchmark["cases"]:
+    for case in selected_cases:
         case_id = case["case_id"]
         artifact_dir = output / "observations" / hashlib.sha256(case_id.encode("utf-8")).hexdigest()[:20]
         session = make_session(case, dict(params))
@@ -404,7 +450,10 @@ def run_cases(spec: Mapping[str, Any], runtime: Any,
                                max_environment_steps=int(spec["max_environment_steps"]),
                                artifact_dir=artifact_dir,
                                capture_observations=params.get("capture_observations", False),
-                               on_progress=checkpoint_progress)
+                               on_progress=checkpoint_progress,
+                               actor_name=str(spec.get("actor", {}).get("name", "react")),
+                               actor_params=spec.get("actor", {}).get("params", {}),
+                               sdk_model_config=spec.get("model", {}))
             if shared_trial is not None:
                 # Check the next fresh reset against the recorded first trial too.
                 actor.identity = shared_trial["trial_metadata"]["case_identity"]

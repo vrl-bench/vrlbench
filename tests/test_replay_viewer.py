@@ -437,7 +437,7 @@ process.stdout.write(JSON.stringify(out));
         self.assertFalse(blocked.exists())
         self.assertEqual(sentinel.read_bytes(), b"existing")
 
-    def test_shared_trial_snapshots_require_the_explicit_source_run_even_after_moving(self):
+    def test_legacy_shared_trial_snapshots_require_explicit_source_after_moving(self):
         source = self.root / "retry"
         source.mkdir()
         raw = b"\x89PNG\r\n\x1a\nshared trial"
@@ -454,6 +454,51 @@ process.stdout.write(JSON.stringify(out));
         self.assertIsNone(first_frame([self.run])["before_image"])
         self.assertIn("source run", first_frame([self.run])["before_snapshot_notice"])
         self.assertTrue(first_frame([self.run, source])["before_image"].startswith("data:image/png;base64,"))
+
+    def test_verified_shared_first_trial_embeds_its_source_without_a_second_run(self):
+        source = self.root / "retry"
+        source.mkdir()
+        raw = b"\x89PNG\r\n\x1a\nshared first trial"
+        image = source / "page.png"
+        image.write_bytes(raw)
+        row = self.payload["cases"][0]["trials"][0]
+        row["trial_metadata"]["replay_observations"] = [
+            {"observation_index": 0, "kind": "image", "path": str(image),
+             "sha256": hashlib.sha256(raw).hexdigest()}]
+        payload = deepcopy(self.payload)
+        payload["output_dir"] = str(source)
+        payload["config"]["memory"] = {"name": "retry"}
+        source_path = source / "evaluation.json"
+        source_path.write_text(json.dumps(payload))
+        row["trial_metadata"]["shared_t1_source"] = {
+            "evaluation_path": str(source_path), "case_id": "sample_0000",
+            "result_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True,
+                separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()}
+        self.save()
+
+        before = self.path.read_bytes(), source_path.read_bytes()
+        data = replay_data([self.run])
+        trial = data["runs"][0]["cases"][0]["trials"][0]
+        self.assertEqual(len(data["runs"]), 1)  # Source assets do not add a second displayed run.
+        self.assertEqual(base64.b64decode(trial["initial_image"].split(",", 1)[1]), raw)
+        self.assertEqual(trial["frames"][0]["before_image"], trial["initial_image"])
+        self.assertIsNone(trial["initial_snapshot_notice"])
+        self.assertEqual((self.path.read_bytes(), source_path.read_bytes()), before)
+
+        row["policy_trajectory"] = trace(action="click[another item]")
+        self.save()
+        with self.assertRaisesRegex(ValueError, "different policy_trajectory"):
+            replay_data([self.run])
+        row["policy_trajectory"] = payload["cases"][0]["trials"][0]["policy_trajectory"]
+        reference = row["trial_metadata"]["shared_t1_source"]
+        reference["result_sha256"] = "0" * 64
+        self.save()
+        with self.assertRaisesRegex(ValueError, "source checksum"):
+            replay_data([self.run])
+        reference["evaluation_path"] = str(self.path)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "its own run"):
+            replay_data([self.run])
 
     def test_snapshot_paths_cannot_escape_run_including_symlinks(self):
         outside = self.root / "secret.html"

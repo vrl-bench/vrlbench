@@ -163,7 +163,12 @@ user-prefix memory in a simulation. The standalone agent API below supports
 both context channels.
 
 The first trial is memory-free. The method receives completed traces and the
-remaining trial horizon, not hidden answers. In the simulator, `observe_trial()`
+remaining trial horizon, not hidden answers. For visual actors,
+`record.image_observations()` returns the original `(observation_index, image_bytes)`
+pairs after checking their trial directory and SHA-256. This excludes screenshots
+recorded only for replay alongside a text actor.
+
+In the simulator, `observe_trial()`
 also receives the successful trial and the final-budget failure, once each.
 For a valid final failure, its actual trace is retained and
 `metadata.has_future_trial` is false. A protocol closure without usable policy

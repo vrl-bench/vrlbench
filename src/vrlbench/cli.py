@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import json
 from pathlib import Path
 import sys
@@ -10,7 +11,7 @@ import sys
 from .simulation import plan, simulate
 from .inspection import inspect_case, render_inspection
 from .results import SimulationResult, compare_results
-from .specs import SimulationSpec
+from .specs import ActorSpec, SimulationSpec
 from ._version import __version__
 
 def _print_json(value: object) -> None:
@@ -25,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
                                   help="simulate a memory system on a workload (online model calls may incur charges)")
     execute.add_argument("--config", type=Path, required=True)
     execute.add_argument("--output-dir", type=Path, help="override the config's run directory")
+    execute.add_argument("--actor", choices=["react", "openhands"], help="override the config's actor")
     execute.add_argument("--plan", action="store_true", help="validate inputs without importing plugins or calling a model")
     inspect = commands.add_parser("inspect", help="read recorded memory contexts, actions, and outcomes; no execution")
     inspect.add_argument("path", type=Path, help="evaluation.json or its run directory")
@@ -66,9 +68,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command in {"simulate", "evaluate"}:
             spec = SimulationSpec.from_path(args.config)
             if args.output_dir is not None:
-                value = spec.to_dict()
-                value["output_dir"] = str(args.output_dir.resolve())
-                spec = SimulationSpec.from_dict(value)
+                spec = replace(spec, output_dir=str(args.output_dir.resolve()))
+            if args.actor is not None:
+                params = spec.actor.params if args.actor == spec.actor.name else {}
+                spec = replace(spec, actor=ActorSpec(args.actor, params))
             if args.plan:
                 _print_json(plan(spec))
                 return 0

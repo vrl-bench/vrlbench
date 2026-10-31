@@ -98,10 +98,11 @@ def validate_formal_trial_environment_accounting(
     }
     if benchmark in {"webarena", "osworld"}:
         states["environment_truncated"] = (False, False, True, False, True)
-        if budget_unit == ACTION_ATTEMPT_BUDGET_UNIT:
-            # Empty replies can exhaust the budget without any native action.
-            # Keep that valid trial, but do not invent a failure trace for memory.
-            states["ao_horizon"] = (False, False, True, False, steps > 0)
+    if budget_unit == ACTION_ATTEMPT_BUDGET_UNIT and (
+            benchmark in {"webarena", "osworld"} or metadata.get("actor_name") == "openhands"):
+        # Bad replies may exhaust any actor's budget without a native action.
+        # Count the trial, but do not invent an environment trace for memory.
+        states["ao_horizon"] = (False, False, True, False, steps > 0)
     if budget_unit == AO_BUDGET_UNIT:
         states["actor_protocol_failure"] = (False, False, False, True, steps > 0)
         if benchmark == "miniwob":

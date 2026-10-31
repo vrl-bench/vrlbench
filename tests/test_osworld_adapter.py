@@ -56,6 +56,11 @@ class FakeDesktopEnv:
         self.closed = False
         self.screenshot = PNG_3_BY_2
         self.accessibility_tree = ACCESSIBILITY_XML
+        self.controller = SimpleNamespace(execute_python_command=self.execute_python_command)
+        self.execution_result = {"status": "success", "output": "", "error": "", "returncode": 0}
+
+    def execute_python_command(self, command):
+        return deepcopy(self.execution_result)
 
     def observation(self):
         return {"screenshot": self.screenshot,
@@ -69,6 +74,8 @@ class FakeDesktopEnv:
 
     def step(self, action, *, pause):
         self.actions.append((action, pause))
+        if action not in {"DONE", "FAIL", "WAIT"}:
+            self.controller.execute_python_command(action)
         return self.observation(), 1.0, action in {"DONE", "FAIL"}, {"evaluator": "hidden"}
 
     def evaluate(self):
@@ -194,6 +201,46 @@ class OSWorldAdapterTests(unittest.TestCase):
         self.assertFalse(session.evaluate())
         self.assertEqual(session.evaluation_score, 0.75)
         self.assertEqual(self.env.evaluations, 2)
+
+    def test_python_runtime_error_reaches_the_next_actor_request_without_repair(self):
+        session = self.session()
+        error = "Traceback (most recent call last):\nNameError: name 'moveTo' is not defined\n"
+        self.env.execution_result = {"status": "success", "output": "partial output\n",
+                                     "error": error, "returncode": 1}
+        original = self.env.controller.execute_python_command
+        calls = []
+        responses = iter(["moveTo(1, 1)", "import pyautogui\npyautogui.moveTo(1, 1)"])
+
+        def model(prompt, **kwargs):
+            calls.append(prompt)
+            response = next(responses)
+            if len(calls) == 2:
+                self.assertIn(json.dumps(error)[1:-1], prompt)
+                self.assertIn('"returncode": 1', prompt)
+                self.env.execution_result = {"status": "success", "output": "", "error": "", "returncode": 0}
+            return response
+
+        actor = make_actor(session, model="offline-fixture", max_environment_steps=2,
+                           artifact_dir=Path(self.temporary.name) / "frames", llm_fn=model)
+        actor()
+        evidence = actor.get_policy_evidence()
+        self.assertEqual([action for action, _ in self.env.actions],
+                         ["moveTo(1, 1)", "import pyautogui\npyautogui.moveTo(1, 1)"])
+        self.assertIn(json.dumps(self.env.execution_result), evidence["steps"][1]["observation"])
+        self.assertEqual(actor.get_trial_metadata()["action_attempts"], 2)
+        self.assertEqual(actor.get_trial_metadata()["environment_steps"], 2)
+        self.assertIs(self.env.controller.execute_python_command, original)
+
+    def test_missing_execution_response_is_not_a_scored_action_and_restores_controller(self):
+        session = self.session()
+        session.reset(trial_index=0)
+        original = self.env.controller.execute_python_command
+        for result in (None, {"status": "error", "message": "VM unavailable"}):
+            self.env.execution_result = result
+            with self.subTest(result=result), self.assertRaisesRegex(RuntimeError, "execution result"):
+                session.step("moveTo(1, 1)")
+            self.assertIs(self.env.controller.execute_python_command, original)
+            self.assertEqual(self.env.evaluations, 0)
 
     def test_infeasible_fail_can_pass_upstream_evaluator(self):
         session = self.session()

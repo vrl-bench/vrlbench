@@ -174,11 +174,15 @@ def _int_field(value: object, name: str) -> int | None:
     return provider_token_count(_field(value, name))
 
 def _usage_payload(response: object) -> dict[str, Any]:
-    usage = getattr(response, 'usage', None)
-    prompt_details = _field(usage, 'prompt_tokens_details') if usage else None
-    completion_details = _field(usage, 'completion_tokens_details') if usage else None
+    usage = _field(response, 'usage')
+    prompt = _field(usage, 'prompt_tokens')
+    completion = _field(usage, 'completion_tokens')
+    prompt = _field(usage, 'input_tokens') if prompt is None else prompt
+    completion = _field(usage, 'output_tokens') if completion is None else completion
+    prompt_details = (_field(usage, 'prompt_tokens_details') or _field(usage, 'input_tokens_details')) if usage else None
+    completion_details = (_field(usage, 'completion_tokens_details') or _field(usage, 'output_tokens_details')) if usage else None
     # Preserve missing and invalid core fields until the shared validator sees them.
-    return {'prompt_tokens': _field(usage, 'prompt_tokens'), 'completion_tokens': _field(usage, 'completion_tokens'), 'total_tokens': _field(usage, 'total_tokens'), 'cached_prompt_tokens': _int_field(prompt_details, 'cached_tokens') if prompt_details else None, 'reasoning_tokens': _int_field(completion_details, 'reasoning_tokens') if completion_details else None}
+    return {'prompt_tokens': prompt, 'completion_tokens': completion, 'total_tokens': _field(usage, 'total_tokens'), 'cached_prompt_tokens': _int_field(prompt_details, 'cached_tokens') if prompt_details else None, 'reasoning_tokens': _int_field(completion_details, 'reasoning_tokens') if completion_details else None}
 
 def _response_choices(response: object) -> list[Any]:
     choices = _field(response, 'choices')
@@ -253,6 +257,43 @@ def _record_resource_failure() -> None:
     ledger = _get_token_ledger()
     if ledger is not None:
         ledger.record_failure()
+
+
+class ExternalRequestObserver:
+    """Account a harness-owned request without replacing its model client.
+
+    External actors own message construction and generation. They call these
+    hooks around each actual request so actor and memory costs share the same
+    per-case ledger and the worker's durable request journal.
+    """
+
+    def __init__(self, model: str) -> None:
+        self.model = model
+
+    def before_request(self, messages: Any, max_tokens: int | None) -> str | None:
+        ledger = _get_token_ledger()
+        if ledger is not None and ledger.max_total_tokens is not None:
+            raise ValueError('external harnesses do not support a strict max_total_tokens ceiling')
+        _respect_provider_call_spacing()
+        journal = getattr(get_client(), 'journal', None)
+        return journal.begin() if journal is not None else None
+
+    def on_response(self, request_id: str | None, response: object) -> None:
+        journal = getattr(get_client(), 'journal', None)
+        if journal is not None:
+            journal.response(request_id, response)
+        _record_resource_usage(response)
+
+    def on_error(self, request_id: str | None, error: BaseException) -> None:
+        journal = getattr(get_client(), 'journal', None)
+        if journal is not None:
+            journal.failure(request_id, error)
+        _record_resource_failure()
+
+
+def external_request_observer(model: str) -> ExternalRequestObserver:
+    """Return accounting hooks for one external actor's native SDK client."""
+    return ExternalRequestObserver(model)
 
 def complete_messages(messages: list[dict[str, str]], model: str, temperature: float,
                       max_tokens: int, top_p: float, context_length: int = 0,

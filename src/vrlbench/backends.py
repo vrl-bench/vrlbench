@@ -422,6 +422,10 @@ def _validate_sdk_shared_source(spec: Mapping[str, Any]) -> None:
             or original.get("memory", {}).get("method_factory") is not None):
         raise ValueError("Shared T1 must come from the reference memory-free Retry condition")
     from vrlbench.worker import expected_case_ids
+    from vrlbench._comparison import comparable_actor
+
+    if comparable_actor(original.get("actor")) != comparable_actor(spec.get("actor")):
+        raise ValueError("Shared T1 SDK actor differs")
 
     if original["benchmark"]["name"] != spec["benchmark"]["name"]:
         raise ValueError("Shared T1 SDK benchmark differs")
@@ -530,6 +534,8 @@ def run_backend(spec: Mapping[str, Any], er_name: str, controller: str) -> tuple
             raise TypeError("A benchmark factory must return an object with run(spec, runtime)")
         runtime = BackendRuntime(spec=spec, er_name=er_name, controller=controller)
         return method(dict(spec), runtime), [{"role": "benchmark", **identity}]
+    if spec.get("actor", {}).get("name", "react") == "openhands":
+        return run_openhands(spec, er_name, controller)
     if benchmark["name"] == "webarena":
         from .environments.webarena import run
         return run(spec, BackendRuntime(spec, er_name, controller)), []
@@ -537,3 +543,64 @@ def run_backend(spec: Mapping[str, Any], er_name: str, controller: str) -> tuple
         from .environments.osworld import run
         return run(spec, BackendRuntime(spec, er_name, controller)), []
     return run_reference(spec, er_name, controller), []
+
+
+def run_openhands(spec: Mapping[str, Any], er_name: str,
+                  controller: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run the native task sessions through an optional OpenHands actor.
+
+    Only actor execution changes: the shared trial loop still owns memory,
+    stopping, outcomes and comparison budgets. An environment may live in a
+    different Python interpreter without changing its native dependencies.
+    """
+    import sys
+    import os
+    from importlib.metadata import version
+
+    if sys.version_info < (3, 12):
+        raise RuntimeError("The OpenHands actor requires Python 3.12 or newer; install vrlbench[runtime,openhands] there")
+    # SDK prompt caches resolve this directory at import time. Keep all SDK
+    # auxiliary state with this run, never in the user's home or another case.
+    os.environ["OH_PERSISTENCE_DIR"] = str(Path(spec["output_dir"]) / "reference" / "openhands-state")
+    try:
+        sdk_version = version("openhands-sdk")
+    except ImportError as exc:
+        raise ModuleNotFoundError("The OpenHands actor requires pip install 'vrlbench[runtime,openhands]'") from exc
+
+    from .environments.interactive import run_cases
+    from .environments.native_sessions import make_session
+
+    benchmark = spec["benchmark"]
+    name = benchmark["name"]
+    condenser_spec = spec.get("actor", {}).get("params", {}).get("condenser")
+    condenser_identity = None
+    if condenser_spec is not None:
+        _, condenser_identity = load_factory(condenser_spec)
+        if spec.get("shared_t1_dir") is not None:
+            from ._shared_t1 import load_shared_first_trials
+
+            load_shared_first_trials(spec, condenser_identity=condenser_identity)
+    if name == "miniwob":
+        cases = [{**case, "case_id": f"{case['task']}_ep{case['episode']}"}
+                 for case in benchmark["cases"]]
+    elif name == "webshop":
+        cases = [{"case_id": f"sample_{index:04d}", "sample_index": index}
+                 for index in benchmark["cases"]]
+    else:
+        cases = benchmark["cases"]
+
+    def create_session(case: Mapping[str, Any], params: Mapping[str, Any]) -> Any:
+        return make_session(name, case, params, model_config=spec["model"],
+                            environment_pythonpath=spec.get("runtime_env", {}).get("PYTHONPATH"))
+
+    runtime = BackendRuntime(spec=spec, er_name=er_name, controller=controller)
+    rows = run_cases(spec, runtime, create_session, cases=cases)
+    identity = [{"role": "actor", "name": "openhands", "sdk_version": sdk_version}]
+    if condenser_identity is not None:
+        for row in rows:
+            for trial in row["trials"]:
+                actual = trial["trial_metadata"].get("condenser_identity")
+                if actual != condenser_identity:
+                    raise ValueError("The OpenHands condenser source changed during evaluation")
+        identity.append({"role": "actor_condenser", **condenser_identity})
+    return rows, identity

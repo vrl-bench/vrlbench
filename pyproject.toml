@@ -23,6 +23,7 @@ classifiers = [
 
 [project.optional-dependencies]
 runtime = ["openai==2.49.0", "packaging>=24,<27"]
+openhands = ["openhands-sdk==1.59.0"]
 analysis = ["numpy>=1.22.4,<3", "scipy>=1.11,<2"]
 dev = ["build>=1.2,<2", "tomli>=2,<3; python_version < '3.11'"]
 

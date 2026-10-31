@@ -32,6 +32,9 @@ def _usage(response: Any) -> tuple[dict[str, int | None], bool]:
     raw = response.get("usage") if isinstance(response, Mapping) else getattr(response, "usage", None)
     values = {field: (raw.get(field) if isinstance(raw, Mapping) else getattr(raw, field, None))
               for field in TOKEN_FIELDS}
+    for field, alias in (("prompt_tokens", "input_tokens"), ("completion_tokens", "output_tokens")):
+        if values[field] is None:
+            values[field] = raw.get(alias) if isinstance(raw, Mapping) else getattr(raw, alias, None)
     counts = {field: _count(value) for field, value in values.items()}
     invalid = any(value is not None and counts[field] is None for field, value in values.items())
     prompt, completion, total = (counts[field] for field in TOKEN_FIELDS)
@@ -56,6 +59,18 @@ class ProviderUsageJournal:
             handle.write(json.dumps({"schema_version": 1, "event": "journal_started"}) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
+
+    @classmethod
+    def attach(cls, output_dir: Path) -> ProviderUsageJournal:
+        """Append from an environment worker without creating another header."""
+        path = Path(output_dir) / JOURNAL_NAME
+        with path.open(encoding="utf-8") as handle:
+            header = json.loads(handle.readline())
+        if header != {"schema_version": 1, "event": "journal_started"}:
+            raise ValueError("cannot attach to an invalid provider usage journal")
+        journal = cls.__new__(cls)
+        journal.path, journal._lock = path, Lock()
+        return journal
 
     def _append(self, event: dict[str, Any]) -> None:
         line = json.dumps({"schema_version": 1, "time_ns": time.time_ns(), **event}, allow_nan=False)

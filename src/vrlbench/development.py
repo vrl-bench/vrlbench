@@ -102,7 +102,7 @@ def evaluate_candidate(
             baseline = SimulationResult.from_path(reference_path)
         reference_context = compare_results([baseline])["context"]
         if reference_context != _comparison_context({"config": candidate_spec.to_dict()}):
-            raise ValueError("reference has incompatible models, environments, or budgets")
+            raise ValueError("reference has incompatible actors, models, environments, or budgets")
         baseline_payload = baseline.to_dict()
         canonical_result = json.dumps(baseline_payload, ensure_ascii=False, sort_keys=True,
                                       separators=(",", ":"), allow_nan=False).encode("utf-8")

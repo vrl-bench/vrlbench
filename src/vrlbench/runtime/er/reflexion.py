@@ -119,7 +119,19 @@ class Reflexion(ERSlot):
             return
         source_log = _source_interaction_log(benchmark, trajectory, actor_trajectory=actor_trajectory)
         prompt = _writer_prompt(benchmark, source_log, _visible_entries(self._entries))
-        raw = complete(prompt, model=model, max_tokens=_EVALUATION_REFLECTION_MAX_TOKENS)
+        from vrlbench.methods import load_observation_images
+
+        observations = load_observation_images(metadata or {})
+        if observations:
+            prompt += ("\n\nAttached screenshots are the actor's original visual observations, "
+                       "in this order: " + ", ".join(str(index) for index, _ in observations)
+                       + ". Observation 0 is before the first action; observation i is after "
+                         "environment action i. Use the attached images, not file paths, "
+                         "when interpreting visible changes.")
+            raw = complete(prompt, model=model, max_tokens=_EVALUATION_REFLECTION_MAX_TOKENS,
+                           images=[image for _, image in observations])
+        else:
+            raw = complete(prompt, model=model, max_tokens=_EVALUATION_REFLECTION_MAX_TOKENS)
         self._entries.append(_reflection_text(raw))
 
     def read_for_trial(self, *, trial_index: int, total_trials: int, model: str, past_trajectories: Sequence[str] | None=None, metadata: dict[str, Any] | None=None) -> str:

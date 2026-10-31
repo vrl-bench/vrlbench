@@ -2,7 +2,7 @@
 
 from .specs import (
     WorkloadSpec, SimulationSpec, BenchmarkSpec, EvaluationSpec,
-    FactorySpec, MemorySpec, ModelSpec, ReplayGateSpec,
+    ActorSpec, FactorySpec, MemorySpec, ModelSpec, ReplayGateSpec,
 )
 from .results import SimulationResult, EvaluationResult, aggregate_cases, compare_results
 from .statistics import analyze_results, posthoc_power_mcnemar
@@ -18,7 +18,7 @@ from ._version import __version__
 evaluate = simulate
 
 __all__ = ["WorkloadSpec", "SimulationSpec", "SimulationResult", "simulate", "plan",
-           "FactorySpec", "MemorySpec", "ModelSpec", "ReplayGateSpec", "ReplayContext", "aggregate_cases", "compare_results",
+           "ActorSpec", "FactorySpec", "MemorySpec", "ModelSpec", "ReplayGateSpec", "ReplayContext", "aggregate_cases", "compare_results",
            "analyze_results", "posthoc_power_mcnemar",
            "CandidateFeedback", "evaluate_candidate",
            "BenchmarkSpec", "EvaluationSpec", "EvaluationResult", "evaluate",

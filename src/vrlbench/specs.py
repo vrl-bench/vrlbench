@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, fields
 import json
 import math
+import os
 from pathlib import Path
 import re
 from typing import Any, Mapping
@@ -83,6 +84,27 @@ class MemorySpec:
 
 
 @dataclass(frozen=True)
+class ActorSpec:
+    """The action-producing agent, independent of its model and memory method."""
+
+    name: str = "react"
+    params: dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> None:
+        if not isinstance(self.name, str) or self.name not in {"react", "openhands"}:
+            raise ValueError("actor.name must be react or openhands")
+        _json_object(self.params, "actor.params")
+        allowed = {"max_output_tokens", "condenser"} if self.name == "openhands" else set()
+        unknown = set(self.params) - allowed
+        if unknown:
+            raise ValueError(f"unknown {self.name} actor parameters: {sorted(unknown)}")
+        if "max_output_tokens" in self.params:
+            _positive_integer(self.params["max_output_tokens"], "actor.params.max_output_tokens")
+        if "condenser" in self.params:
+            _construct(FactorySpec, self.params["condenser"]).validate()
+
+
+@dataclass(frozen=True)
 class ReplayGateSpec:
     """Optional trial-level exposure policy, independent of memory writes."""
 
@@ -152,6 +174,7 @@ class SimulationSpec:
     require_provider_usage: bool = True
     runtime_env: dict[str, str] = field(default_factory=dict)
     replay_gate: ReplayGateSpec | None = None
+    actor: ActorSpec = field(default_factory=ActorSpec)
 
     def __init__(
         self,
@@ -168,6 +191,7 @@ class SimulationSpec:
         require_provider_usage: bool = True,
         runtime_env: dict[str, str] | None = None,
         replay_gate: ReplayGateSpec | None = None,
+        actor: ActorSpec | None = None,
         benchmark: WorkloadSpec | None = None,
     ) -> None:
         if workload is not None and benchmark is not None:
@@ -184,6 +208,7 @@ class SimulationSpec:
             "require_provider_usage": require_provider_usage,
             "runtime_env": {} if runtime_env is None else runtime_env,
             "replay_gate": replay_gate,
+            "actor": ActorSpec() if actor is None else actor,
         }
         for name, value in values.items():
             object.__setattr__(self, name, value)
@@ -202,6 +227,8 @@ class SimulationSpec:
             value["memory"].pop("method_factory")
         if self.replay_gate is None:
             value.pop("replay_gate")
+        if self.actor == ActorSpec():
+            value.pop("actor")
         return value
 
     @classmethod
@@ -228,6 +255,8 @@ class SimulationSpec:
             if gate.get("factory") is not None:
                 gate["factory"] = _construct(FactorySpec, gate["factory"])
             value["replay_gate"] = _construct(ReplayGateSpec, gate)
+        if "actor" in value:
+            value["actor"] = _construct(ActorSpec, value["actor"])
         value["workload"] = _construct(WorkloadSpec, workload)
         value["model"] = _construct(ModelSpec, model)
         value["memory"] = _construct(MemorySpec, memory)
@@ -240,6 +269,9 @@ class SimulationSpec:
 
     def resolved(self, base: Path | None = None) -> SimulationSpec:
         root = Path.cwd() if base is None else Path(base)
+        if not isinstance(self.actor, ActorSpec):
+            raise ValueError("actor must use ActorSpec")
+        _json_object(self.actor.params, "actor.params")
         value = self.to_dict()
         for section, key in (("benchmark", "factory"), ("memory", "factory"),
                              ("memory", "method_factory"), ("model", "transport")):
@@ -248,6 +280,19 @@ class SimulationSpec:
                 value[section][key] = asdict(_construct(FactorySpec, original).resolved(root))
         if self.replay_gate is not None and self.replay_gate.factory is not None:
             value["replay_gate"]["factory"] = asdict(self.replay_gate.factory.resolved(root))
+        if self.actor.params.get("condenser") is not None:
+            condenser = _construct(FactorySpec, self.actor.params["condenser"])
+            value["actor"]["params"]["condenser"] = asdict(condenser.resolved(root))
+        session_factory = self.workload.params.get("session_factory")
+        if session_factory is not None:
+            value["benchmark"]["params"]["session_factory"] = asdict(
+                _construct(FactorySpec, session_factory).resolved(root))
+        environment_python = self.workload.params.get("environment_python")
+        if isinstance(environment_python, str):
+            if not environment_python.strip() or "://" in environment_python:
+                raise ValueError("environment_python must be an interpreter path")
+            value["benchmark"]["params"]["environment_python"] = str(
+                os.path.abspath(root / Path(environment_python).expanduser()))
         value["output_dir"] = str((root / self.output_dir).resolve())
         if self.workload.factory is None and self.workload.name in {"webarena", "osworld"}:
             params = value["benchmark"]["params"]
@@ -265,6 +310,13 @@ class SimulationSpec:
         return self.from_dict(value)
 
     def validate(self) -> None:
+        if not isinstance(self.actor, ActorSpec):
+            raise ValueError("actor must use ActorSpec")
+        self.actor.validate()
+        if self.actor.name == "openhands" and self.max_total_tokens is not None:
+            raise ValueError("OpenHands does not support a strict max_total_tokens ceiling")
+        if self.actor.name == "openhands" and self.model.transport is not None:
+            raise ValueError("OpenHands does not support model.transport; configure the model directly")
         if self.replay_gate is not None:
             if not isinstance(self.replay_gate, ReplayGateSpec):
                 raise ValueError("replay_gate must use ReplayGateSpec")
@@ -316,11 +368,21 @@ class SimulationSpec:
         if not isinstance(self.workload.cases, list) or not self.workload.cases:
             raise ValueError("workload.cases must explicitly select at least one case")
         _json_object(self.workload.params, "workload.params")
+        if "environment_python" in self.workload.params:
+            environment_python = self.workload.params["environment_python"]
+            if self.actor.name != "openhands":
+                raise ValueError("environment_python is only supported with the openhands actor")
+            if not isinstance(environment_python, str) or not environment_python.strip() or "://" in environment_python:
+                raise ValueError("environment_python must be an interpreter path")
+        if "session_factory" in self.workload.params:
+            if self.actor.name != "openhands":
+                raise ValueError("session_factory is only supported with the openhands actor")
+            _construct(FactorySpec, self.workload.params["session_factory"]).validate()
         if self.workload.factory is None:
-            allowed_params = {"webshop": {"max_actor_steps", "capture_observations"},
-                              "miniwob": {"headless", "trial_seed_mode", "capture_observations"},
-                              "webarena": {"observation_type", "headless", "reset_factory", "capture_observations", "judge_model"},
-                              "osworld": {"env_kwargs", "pause"}}[self.workload.name]
+            allowed_params = {"webshop": {"max_actor_steps", "capture_observations", "environment_python", "session_factory"},
+                              "miniwob": {"headless", "trial_seed_mode", "capture_observations", "environment_python", "session_factory"},
+                              "webarena": {"observation_type", "headless", "reset_factory", "capture_observations", "judge_model", "environment_python", "session_factory"},
+                              "osworld": {"env_kwargs", "pause", "capture_observations", "environment_python", "session_factory"}}[self.workload.name]
             unknown = set(self.workload.params) - allowed_params
             if unknown:
                 raise ValueError(f"unknown {self.workload.name} params: {sorted(unknown)}")

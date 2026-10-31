@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -78,6 +80,34 @@ class LazyMethodTests(unittest.TestCase):
 
 @unittest.skipUnless(HAS_RUNTIME, "Install the runtime extra for reference methods")
 class MethodTests(unittest.TestCase):
+    def test_visual_reflection_receives_original_actor_images(self):
+        from test_interactive import PNG
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            image = root / "initial.png"
+            image.write_bytes(PNG)
+            reference = {"observation_index": 0, "path": str(image),
+                         "sha256": hashlib.sha256(PNG).hexdigest()}
+            metadata = {"benchmark": "osworld", "visual_observation_root": str(root),
+                        "screenshots": [reference], "has_future_trial": True}
+            record = TrialRecord(0, self.trace(), False, metadata=metadata)
+            self.assertEqual(record.image_observations(), [(0, PNG)])
+            method, client = self.method("reflexion", "Use the visible clock menu.",
+                                         trials=2, metadata={"benchmark": "osworld"})
+            method.observe_trial(record)
+            content = client.calls[0]["messages"][-1]["content"]
+            import base64
+            self.assertEqual(base64.b64decode(content[1]["image_url"]["url"].split(",", 1)[1]), PNG)
+            self.assertIn("observation", content[0]["text"].lower())
+            self.assertIn("visible clock", method.context_for_trial(1).user)
+            image.write_bytes(PNG + b"changed")
+            with self.assertRaisesRegex(ValueError, "content hash"):
+                record.image_observations()
+            metadata["screenshots"] = [{**reference, "path": str(root.parent / image.name)}]
+            with self.assertRaises((ValueError, FileNotFoundError)):
+                record.image_observations()
+
     def test_runtime_registry_keeps_current_methods_without_retired_imports(self):
         from vrlbench.runtime import VEX2
         from vrlbench.runtime.controllers import make_controller

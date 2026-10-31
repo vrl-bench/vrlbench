@@ -8,11 +8,12 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from ._comparison import comparable_workload
+from ._comparison import comparable_actor, comparable_workload, recorded_condenser_identity
 from .results import SimulationResult
 
 
-def load_shared_first_trials(spec: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def load_shared_first_trials(spec: Mapping[str, Any], *,
+                             condenser_identity: Mapping[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     """Match a completed SDK run and extract only its memory-free first trials.
 
     New records separate the actor's usage from the memory update after failure.
@@ -24,13 +25,25 @@ def load_shared_first_trials(spec: Mapping[str, Any]) -> dict[str, dict[str, Any
         raise ValueError("shared_t1_dir must contain a completed SDK evaluation.json")
     payload = SimulationResult.from_path(source).require_complete().to_dict()
     original = payload.get("config", {})
-    for field in ("model", "benchmark", "trials", "max_environment_steps",
+    for field in ("actor", "model", "benchmark", "trials", "max_environment_steps",
                   "max_total_tokens", "runtime_env", "require_provider_usage"):
         before, after = original.get(field), spec.get(field)
         if field == "benchmark":
             before, after = comparable_workload(before), comparable_workload(after)
+        if field == "actor":
+            before, after = comparable_actor(before), comparable_actor(after)
         if before != after:
             raise ValueError(f"shared first-trial source has different {field}")
+    if condenser_identity is not None:
+        # Execution supplies the identity returned by load_factory before any
+        # environment/model work. Planning still never imports the factory.
+        recorded = recorded_condenser_identity(payload)
+        current = recorded_condenser_identity({"identity": {"plugins": [
+            {**dict(condenser_identity), "role": "actor_condenser"}]}})
+        if recorded is None or current is None:
+            raise ValueError("shared first trial lacks a recorded actor_condenser source identity")
+        if recorded["source_sha256"].lower() != current["source_sha256"].lower():
+            raise ValueError("shared first-trial source has different actor_condenser code")
     memory = original.get("memory") or {}
     legacy_retry = (memory.get("name") == "retry" and memory.get("factory") is None
                     and memory.get("method_factory") is None)
@@ -60,13 +73,19 @@ def load_shared_first_trials(spec: Mapping[str, Any]) -> dict[str, dict[str, Any
         metadata["actor_llm_usage"] = deepcopy(dict(usage))
         metadata["shared_t1_source"] = {"evaluation_path": str(source),
                                         "result_sha256": digest, "case_id": case["case_id"]}
+        if metadata.get("screenshots") and not metadata.get("visual_observation_root"):
+            # Old records predate the visual-memory root. This source was
+            # explicitly selected and verified; never infer trust from an image path.
+            metadata["visual_observation_root"] = str(source.parent)
         # A candidate recomputes its own post-failure state from this experience.
         for key in ("spatial_state_pre", "spatial_state", "controller_state_pre",
                     "controller_state", "temporal_decision", "controller_decision"):
             first[key] = None
         first_trials[case["case_id"]] = {"trial": first, "task": case["task"],
                                          "source_identity": deepcopy(case.get("source_identity", {}))}
-    selected = {case["case_id"] for case in spec["benchmark"]["cases"]}
+    from .worker import expected_case_ids
+
+    selected = expected_case_ids(spec["benchmark"])
     if set(first_trials) != selected:
         raise ValueError("shared first-trial source has different case selection")
     return first_trials
