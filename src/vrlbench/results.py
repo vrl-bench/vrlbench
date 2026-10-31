@@ -512,7 +512,7 @@ def compare_results(results: Sequence[SimulationResult | Mapping[str, Any]]) -> 
                 "avg_t_difference": fsum(attempt_differences) / len(attempt_differences),
                 "positive_pairs": differences.count(1), "negative_pairs": differences.count(-1),
                 "tied_pairs": differences.count(0),
-                "case_deltas": case_deltas,
+                "case_deltas": sorted(case_deltas, key=lambda delta: delta["case_id"]),
             })
     return {"comparison": "descriptive_paired", "context": reference_context,
             "component_identity_check": identity_check,

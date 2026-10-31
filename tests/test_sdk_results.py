@@ -357,6 +357,7 @@ class CompareResultsTests(unittest.TestCase):
         self.assertEqual(effect["positive_pairs"], 1)
         self.assertEqual(effect["negative_pairs"], 0)
         self.assertEqual(effect["tied_pairs"], 1)
+        self.assertEqual([row["case_id"] for row in effect["case_deltas"]], ["a", "b"])
         deltas = {row["case_id"]: row for row in effect["case_deltas"]}
         self.assertEqual(deltas["a"], {
             "case_id": "a", "task": "task",
