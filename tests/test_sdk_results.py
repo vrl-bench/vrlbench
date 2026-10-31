@@ -357,6 +357,15 @@ class CompareResultsTests(unittest.TestCase):
         self.assertEqual(effect["positive_pairs"], 1)
         self.assertEqual(effect["negative_pairs"], 0)
         self.assertEqual(effect["tied_pairs"], 1)
+        deltas = {row["case_id"]: row for row in effect["case_deltas"]}
+        self.assertEqual(deltas["a"], {
+            "case_id": "a", "task": "task",
+            "reference_success": False, "target_success": True,
+            "reference_trials_executed": 3, "target_trials_executed": 2,
+            "success_difference": 1, "censored_trials_difference": -2,
+        })
+        self.assertEqual(deltas["b"]["success_difference"], 0)
+        self.assertEqual(deltas["b"]["censored_trials_difference"], 1)
 
     def test_incompatible_inputs_are_rejected(self):
         baseline = make_result([make_case("a", [True])])

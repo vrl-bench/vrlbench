@@ -115,6 +115,8 @@ class TerminalTrialLifecycle(unittest.TestCase):
                     self.assertFalse(record.success)
                     self.assertTrue(record.metadata["policy_evidence_eligible"])
                     self.assertEqual(record.trajectory, trial.policy_trajectory)
+                    self.assertEqual(record.actor_trajectory, trial.actor_trajectory)
+                    self.assertEqual(record.metadata["trial_close_reason"], trial.trial_metadata["trial_close_reason"])
                     self.assertIn("policy_ao_trace", record.trajectory)
                 final = method.records[-1]
                 self.assertTrue(final.metadata["trace_available"])
@@ -130,6 +132,7 @@ class TerminalTrialLifecycle(unittest.TestCase):
                 self.assertEqual(len(method.records), len(result.trials))
                 invalid = method.records[0]
                 self.assertEqual(invalid.trajectory, "")
+                self.assertEqual(invalid.actor_trajectory, result.trials[0].actor_trajectory)
                 self.assertFalse(invalid.metadata["policy_evidence_eligible"])
                 self.assertFalse(invalid.metadata["trace_available"])
                 self.assertEqual(invalid.metadata["has_future_trial"], len(eligibility) > 1)
@@ -148,7 +151,7 @@ class TerminalTrialLifecycle(unittest.TestCase):
                 self.assertEqual(record.metadata["trace_available"], eligible)
                 self.assertFalse(record.metadata["has_future_trial"])
                 self.assertEqual(record.trajectory, trial.policy_trajectory if eligible else "")
-                self.assertEqual(record.actor_trajectory, trial.actor_trajectory if eligible else None)
+                self.assertEqual(record.actor_trajectory, trial.actor_trajectory)
                 self.assertEqual(slot.writes, [])
 
     def test_success_notifies_once_and_never_writes_a_following_update(self):
@@ -161,6 +164,8 @@ class TerminalTrialLifecycle(unittest.TestCase):
                 self.assertEqual(len(method.records), 1)
                 self.assertTrue(method.records[0].success)
                 self.assertEqual(method.records[0].trajectory, result.trials[0].policy_trajectory)
+                self.assertEqual(method.records[0].actor_trajectory, result.trials[0].actor_trajectory)
+                self.assertFalse(method.records[0].metadata["has_future_trial"])
                 self.assertEqual(slot.writes, [])
 
     def test_optional_close_hooks_preserve_legacy_controller_compatibility(self):

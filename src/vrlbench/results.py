@@ -444,6 +444,7 @@ def compare_results(results: Sequence[SimulationResult | Mapping[str, Any]]) -> 
     Matching task cases and interaction/trial settings does not establish
     equal model-call or token cost. Recorded benchmark/model-transport source
     hashes must agree when available; missing hashes are reported as unverified.
+    Each effect includes case-level outcome and censored-trial differences.
     No statistical interval is inferred here.
     """
     if not results:
@@ -486,20 +487,32 @@ def compare_results(results: Sequence[SimulationResult | Mapping[str, Any]]) -> 
             rows[-1]["replay_gate"] = deepcopy(config["replay_gate"])
         if index:
             differences, attempt_differences = [], []
+            case_deltas = []
             for case_id, case in cases.items():
                 reference = reference_cases[case_id]
                 success, reference_success = case["trials"][-1]["success"], reference["trials"][-1]["success"]
-                differences.append(int(success) - int(reference_success))
-                attempt_differences.append(
+                success_difference = int(success) - int(reference_success)
+                trials_difference = (
                     (len(case["trials"]) if success else reference_context["trials"] + 1) -
                     (len(reference["trials"]) if reference_success else reference_context["trials"] + 1)
                 )
+                differences.append(success_difference)
+                attempt_differences.append(trials_difference)
+                case_deltas.append({
+                    "case_id": case_id, "task": case["task"],
+                    "reference_success": reference_success, "target_success": success,
+                    "reference_trials_executed": len(reference["trials"]),
+                    "target_trials_executed": len(case["trials"]),
+                    "success_difference": success_difference,
+                    "censored_trials_difference": trials_difference,
+                })
             effects.append({
                 "target": method, "reference": rows[0]["method"],
                 "sr_difference_pp": 100 * fsum(differences) / len(differences),
                 "avg_t_difference": fsum(attempt_differences) / len(attempt_differences),
                 "positive_pairs": differences.count(1), "negative_pairs": differences.count(-1),
                 "tied_pairs": differences.count(0),
+                "case_deltas": case_deltas,
             })
     return {"comparison": "descriptive_paired", "context": reference_context,
             "component_identity_check": identity_check,

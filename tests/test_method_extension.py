@@ -1,4 +1,4 @@
-"""Offline whole-method extension tests against the unchanged reference loop."""
+"""Offline whole-method lifecycle checks through the shared trial loop."""
 
 from __future__ import annotations
 
@@ -85,7 +85,8 @@ class Backend:
                             "steps": [{"action": "click actual target", "observation": "actual visible outcome"}],
                             "trial_close_reason": "done"}
                 def get_trial_metadata(self):
-                    return {"policy_evidence_eligible": self.index != options.get("ineligible_index", -1)}
+                    return {"policy_evidence_eligible": self.index != options.get("ineligible_index", -1),
+                            "trial_close_reason": "done", "observed_trial_index": self.index}
             episode = runtime.run_episode(Actor(), lambda trace: trace.endswith("success"),
                 metadata={"task_scope": "custom task family", "basic_environment_rules": "one actual click"})
             rows.append({"case_id": str(case), "task": "custom-task",
@@ -232,6 +233,11 @@ class WholeMethodWorkerTests(unittest.TestCase):
             self.assertEqual(records[0]["trajectory"], first["policy_trajectory"])
             self.assertTrue(records[0]["trajectory"].startswith("policy_ao_trace\n"))
             self.assertNotIn("private Actor", records[0]["trajectory"])
+            for record, trial in zip(records, case["trials"]):
+                self.assertEqual(record["actor_trajectory"], trial["actor_trajectory"])
+                self.assertEqual(record["metadata"]["observed_trial_index"], trial["trial"])
+                self.assertEqual(record["metadata"]["trial_close_reason"], trial["trial_metadata"]["trial_close_reason"])
+                self.assertEqual(record["metadata"]["has_future_trial"], not trial["success"])
         contexts = [row for row in self.events() if row["kind"] == "context"]
         self.assertEqual([row["index"] for row in contexts], [0, 1, 0, 1])
         roles = [identity["role"] for identity in result["identity"]["plugins"]]
@@ -244,11 +250,12 @@ class WholeMethodWorkerTests(unittest.TestCase):
             trial = result["cases"][0]["trials"][0]
             self.assertEqual(len(result["cases"][0]["trials"]), 1)
             record = trial["controller_state"]["records"][0]
+            self.assertEqual(record["actor_trajectory"], trial["actor_trajectory"])
+            self.assertEqual(record["metadata"]["trial_close_reason"], trial["trial_metadata"]["trial_close_reason"])
+            self.assertFalse(record["metadata"]["has_future_trial"])
             if after == 20:
                 self.assertEqual(record["trajectory"], trial["policy_trajectory"])
-                self.assertEqual(record["actor_trajectory"], trial["actor_trajectory"])
                 self.assertTrue(record["metadata"]["policy_evidence_eligible"])
-                self.assertFalse(record["metadata"]["has_future_trial"])
             else:
                 self.assertTrue(record["success"])
 
@@ -258,6 +265,8 @@ class WholeMethodWorkerTests(unittest.TestCase):
         first = result["cases"][0]["trials"][0]
         record = first["controller_state"]["records"][0]
         self.assertEqual(record["trajectory"], "")
+        self.assertEqual(record["actor_trajectory"], first["actor_trajectory"])
+        self.assertEqual(record["metadata"]["trial_close_reason"], first["trial_metadata"]["trial_close_reason"])
         self.assertFalse(record["metadata"]["policy_evidence_eligible"])
         self.assertTrue(record["metadata"]["has_future_trial"])
 

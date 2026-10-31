@@ -86,6 +86,7 @@ class CandidateEvaluationTests(unittest.TestCase):
         self.assertAlmostEqual(initial.metrics["sr_at_t"], 1 / 3)
         self.assertIsNone(initial.comparison)
         self.assertIsNone(initial.regressed_case_ids)
+        self.assertIsNone(initial.reference)
         self.assertEqual(original_spec.memory.name, "retry")
         path.write_text(ACCUMULATE_FEEDBACK, encoding="utf-8")
         improved = evaluate_candidate(path, self.spec(), reference=initial.evaluation_path)
@@ -95,6 +96,16 @@ class CandidateEvaluationTests(unittest.TestCase):
         self.assertEqual(improved.metrics["avg_t_at_t"], 2)
         self.assertEqual(improved.regressed_case_ids, [])
         self.assertAlmostEqual(improved.comparison["paired_effects"][0]["sr_difference_pp"], 200 / 3)
+        self.assertEqual(improved.reference["evaluation_path"], initial.evaluation_path)
+        self.assertEqual(improved.reference["memory_sources"][0]["source_sha256"],
+                         initial.candidate_sha256)
+        parent_payload = json.loads(Path(initial.evaluation_path).read_text())
+        canonical_parent = json.dumps(parent_payload, ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":"), allow_nan=False).encode("utf-8")
+        self.assertEqual(improved.reference["result_sha256"], hashlib.sha256(canonical_parent).hexdigest())
+        deltas = {row["case_id"]: row for row in improved.comparison["paired_effects"][0]["case_deltas"]}
+        self.assertEqual(deltas["case_b"]["success_difference"], 1)
+        self.assertEqual(deltas["case_b"]["censored_trials_difference"], -1)
         case = next(case for case in improved.cases if case["case_id"] == "case_b")
         self.assertEqual([json.loads(row["trajectory"])["action"] for row in case["trials"]],
                          ["amber", "blue", "green"])
@@ -112,6 +123,9 @@ class CandidateEvaluationTests(unittest.TestCase):
         path.write_text(IGNORE_FEEDBACK, encoding="utf-8")
         regressed = evaluate_candidate(path, self.spec(), reference=improved.output_dir)
         self.assertEqual(regressed.regressed_case_ids, ["case_a", "case_b"])
+        self.assertEqual(regressed.reference["evaluation_path"], improved.evaluation_path)
+        self.assertEqual(regressed.reference["memory_sources"][0]["source_sha256"],
+                         improved.candidate_sha256)
 
     def test_memory_interface_and_factory_arguments(self):
         path = self.source(MEMORY_CODE)
@@ -120,6 +134,13 @@ class CandidateEvaluationTests(unittest.TestCase):
         self.assertTrue(result.scorable)
         self.assertTrue(result.candidate_identity_verified)
         self.assertEqual(result.metrics["sr_at_t"], 1)
+        legacy = SimulationResult.from_path(result.evaluation_path).to_dict()
+        legacy["identity"] = None
+        compared = evaluate_candidate(path, self.spec(), interface="memory", factory="make_memory",
+                                      factory_kwargs={"label": "complete-memory-code"},
+                                      reference=SimulationResult(legacy))
+        self.assertTrue(compared.scorable)
+        self.assertEqual(compared.reference["memory_sources"], [])
 
     def test_bad_candidate_and_timeout_are_not_zero_scores(self):
         broken = self.source("raise RuntimeError('candidate import failed')\n")
@@ -183,6 +204,7 @@ class CandidateEvaluationTests(unittest.TestCase):
         self.assertIsNone(result.comparison)
         self.assertIsNone(result.regressed_case_ids)
         self.assertIn("plugin source identities", result.error["message"])
+        self.assertIsNone(result.reference["evaluation_path"])
         self.assertTrue(all(value is None for value in result.metrics.values()))
 
     def test_nonempty_output_is_never_overwritten(self):

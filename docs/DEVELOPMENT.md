@@ -247,18 +247,35 @@ print(feedback.regressed_case_ids)
 print(feedback.evaluation_path)
 ```
 
-The supplied method replays the latest failed trace. Read the returned contexts,
-actions, outcomes, and regressions, revise the implementation, and evaluate it
-again in a fresh directory. Use the same interface with MiniWoB or your own
-workload. For an offline introduction to the feedback fields, use the
+The supplied method replays the latest failed trace as an interface example,
+not a required starting algorithm. An empty memory implementation can be the
+starting version. Read the returned contexts, actions, outcomes, and regressions,
+revise the implementation, and compare the next version with its parent:
+
+```python
+# After editing the method, keep the workload, model, and budgets unchanged.
+next_feedback = evaluate_candidate(
+    "examples/whole_method/method.py",
+    replace(base, shared_t1_dir=base.output_dir,
+            output_dir=str(root / "next-version")),
+    reference=feedback.evaluation_path,
+)
+print(next_feedback.comparison["paired_effects"][0]["case_deltas"])
+```
+
+The comparison reference can change from one version to the next; it is
+independent of the shared first-trial source. Keep the original memory-free run
+as a fixed reference for cumulative progress. For an offline introduction to
+the feedback fields, use the
 [local interface example](QUICKSTART.md#local-interface-check).
 
 The default is `factory="create_method"`, returning `MemoryMethod`. For a memory
 slot, set `interface="memory"`, `factory="create_memory"`, and optionally
 `factory_kwargs={...}`. Only the memory binding changes: the workload, model,
 trial and interaction limits, replay gate, and shared-first-trial source remain
-as supplied. Provider-accounted native memory comparisons still require a
-compatible completed Retry source.
+as supplied. Provider-accounted MiniWoB and WebShop memory comparisons require
+a compatible completed Retry source. WebArena and OSWorld currently execute
+independent first trials: leave `shared_t1_dir` unset for those workloads.
 
 A supplied `reference` can be a `SimulationResult`, run directory, or result
 file. It must be complete and compatible; another memory method can be the
@@ -276,7 +293,8 @@ Each call returns `CandidateFeedback` and saves `feedback.json` beside
 | `status`, `scorable` | Execution status, and whether completion, candidate identity, and any requested comparison were verified. |
 | `metrics`, `counts` | Success, recovery, censored trials-to-success, and case counts. Unknown metrics remain `None`. |
 | `cases` | Recorded contexts, actions, observations, and outcomes supplied by the workload. |
-| `comparison` | Paired comparison with the supplied compatible reference, or `None` when unavailable. |
+| `comparison` | Paired comparison with the supplied compatible reference, including per-case changes in each effect's `case_deltas`; `None` when unavailable. |
+| `reference` | The supplied reference result's path (when passed by path), canonical result SHA-256, memory configuration, and recorded memory-source identities; `None` when no reference was supplied. |
 | `regressed_case_ids` | Cases losing success or needing more censored trials than the reference; `None` means no valid comparison, not no regressions. |
 | `resources` | Available model and environment usage, including costs retained after incomplete execution. |
 | `candidate_sha256`, `candidate_identity_verified` | Starting source hash and whether the worker's recorded candidate matches it. |
@@ -285,6 +303,14 @@ Each call returns `CandidateFeedback` and saves `feedback.json` beside
 Check `scorable` before ranking candidates. Failed or timed-out execution is
 not a score of zero. Incomplete runs and failed identity or compatibility checks
 expose `None` metrics while retaining available records and costs.
+
+Each case delta contains both success outcomes, actual trial counts,
+`success_difference` (target minus reference), and
+`censored_trials_difference`. The latter uses `T + 1` for an unsolved case, as
+does `AvgT@T`; a negative difference is better. An executed trial count is not
+a trials-to-success value when the case remains unsolved. Reference hashes
+use UTF-8 JSON with sorted keys, compact separators, and `ensure_ascii=False`,
+so the same result passed in memory or loaded from a file has the same identity.
 
 Read the feedback, change the implementation, and use a fresh output directory
 for the next evaluation. The framework neither chooses the next candidate nor

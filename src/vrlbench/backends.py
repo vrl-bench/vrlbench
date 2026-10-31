@@ -21,7 +21,7 @@ _METHOD_FACTORIES: dict[str, Callable[..., Any]] = {}
 
 
 class _MethodController:
-    """Adapt one whole-method instance without changing the reference loop.
+    """Adapt one whole-method instance to the shared trial loop.
 
     The reference controller channel is a verbatim system-text channel. User
     text is rejected explicitly rather than silently dropped or repositioned.
@@ -95,53 +95,32 @@ class _MethodController:
             self._contexts[trial_index] = context
         return ControllerContext(verbatim_system_context=self._contexts[trial_index].system)
 
-    def on_failure(self, trajectory: str, model: str, *, trial_index: int | None = None, **_: Any) -> None:
+    def observe_trial(
+        self, *, trajectory: str, actor_trajectory: str | None,
+        trial_index: int, success: bool, metadata: Mapping[str, Any],
+    ) -> None:
+        """Pass one completed trial to the method without changing its contents."""
         from vrlbench.methods import TrialRecord
 
         self._ensure_case()
         self.method.observe_trial(TrialRecord(
-            trial_index=int(trial_index), trajectory=trajectory, success=False,
-            metadata={"policy_evidence_eligible": True, "has_future_trial": True},
+            trial_index=trial_index, trajectory=trajectory, success=success,
+            actor_trajectory=actor_trajectory, metadata=deepcopy(dict(metadata)),
         ))
+
+    def on_failure(self, trajectory: str, model: str, *, trial_index: int | None = None, **_: Any) -> None:
+        # Keep the legacy controller entry points for direct callers. The trial
+        # loop uses observe_trial to include the actual transcript and metadata.
+        self.observe_trial(
+            trajectory=trajectory, actor_trajectory=None, trial_index=int(trial_index),
+            success=False, metadata={"policy_evidence_eligible": True, "has_future_trial": True},
+        )
 
     def on_success(self, trajectory: str, *, trial_index: int | None = None) -> None:
-        from vrlbench.methods import TrialRecord
-
-        self._ensure_case()
-        self.method.observe_trial(TrialRecord(
-            trial_index=int(trial_index), trajectory=trajectory, success=True,
-            metadata={"policy_evidence_eligible": True, "has_future_trial": False},
-        ))
-
-    def on_trial_closed_with_policy_evidence(
-        self, trajectory: str, model: str, *, trial_index: int,
-        close_reason: str, has_future_trial: bool,
-        actor_trajectory: str | None = None,
-    ) -> None:
-        """Report a valid final failure without asking for another policy."""
-        from vrlbench.methods import TrialRecord
-
-        self._ensure_case()
-        self.method.observe_trial(TrialRecord(
-            trial_index=trial_index, trajectory=trajectory, success=False,
-            actor_trajectory=actor_trajectory,
-            metadata={"policy_evidence_eligible": True, "trace_available": True,
-                      "has_future_trial": has_future_trial, "trial_close_reason": close_reason},
-        ))
-
-    def on_trial_closed_without_policy_evidence(
-        self, *, trial_index: int, close_reason: str, has_future_trial: bool, **_: Any,
-    ) -> None:
-        from vrlbench.methods import TrialRecord
-
-        self._ensure_case()
-        # The loop deliberately supplies no trace for this notification. Do
-        # not manufacture a failure observation for a closed opportunity.
-        self.method.observe_trial(TrialRecord(
-            trial_index=trial_index, trajectory="", success=False,
-            metadata={"policy_evidence_eligible": False, "trace_available": False,
-                      "has_future_trial": has_future_trial, "trial_close_reason": close_reason},
-        ))
+        self.observe_trial(
+            trajectory=trajectory, actor_trajectory=None, trial_index=int(trial_index),
+            success=True, metadata={"policy_evidence_eligible": True, "has_future_trial": False},
+        )
 
     def snapshot(self) -> dict[str, Any]:
         self._ensure_case()

@@ -26,6 +26,8 @@ class CandidateFeedback:
     ``regressed_case_ids`` identifies success losses or increased censored
     trials-to-success relative to the reference. ``None`` means no valid paired
     comparison was available, not that no regressions occurred.
+    ``reference`` identifies the result used for comparison and its recorded
+    memory sources; it is not necessarily the memory-free condition.
     """
 
     status: str
@@ -43,6 +45,7 @@ class CandidateFeedback:
     output_dir: str
     evaluation_path: str
     error: dict[str, Any] | None
+    reference: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return an independent JSON-compatible view of this feedback."""
@@ -90,13 +93,27 @@ def evaluate_candidate(
     # candidate code. Keep this before any new run directory is created.
     plan(candidate_spec)
     baseline = reference
+    reference_identity = None
     if baseline is not None:
+        reference_path = None
         if not isinstance(baseline, SimulationResult):
             path = Path(baseline)
-            baseline = SimulationResult.from_path(path / "evaluation.json" if path.is_dir() else path)
+            reference_path = (path / "evaluation.json" if path.is_dir() else path).resolve(strict=True)
+            baseline = SimulationResult.from_path(reference_path)
         reference_context = compare_results([baseline])["context"]
         if reference_context != _comparison_context({"config": candidate_spec.to_dict()}):
             raise ValueError("reference has incompatible models, environments, or budgets")
+        baseline_payload = baseline.to_dict()
+        canonical_result = json.dumps(baseline_payload, ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":"), allow_nan=False).encode("utf-8")
+        reference_identity = {
+            "evaluation_path": str(reference_path) if reference_path is not None else None,
+            "result_sha256": hashlib.sha256(canonical_result).hexdigest(),
+            "memory": baseline.memory,
+            "memory_sources": [deepcopy(entry) for entry in
+                               ((baseline_payload.get("identity") or {}).get("plugins") or [])
+                               if entry.get("role") in {"memory", "memory_method"}],
+        }
 
     result = simulate(candidate_spec)
     payload = result.to_dict()
@@ -127,14 +144,8 @@ def evaluate_candidate(
             scorable = False
             error = {"type": type(exc).__name__, "message": str(exc)}
         else:
-            previous = {case["case_id"]: case for case in baseline.cases}
-            horizon = candidate_spec.trials
-
-            def attempts(case: dict[str, Any]) -> int:
-                return len(case["trials"]) if case["trials"][-1]["success"] else horizon + 1
-
-            regressions = sorted(case["case_id"] for case in result.cases
-                                 if attempts(case) > attempts(previous[case["case_id"]]))
+            regressions = sorted(row["case_id"] for row in comparison["paired_effects"][0]["case_deltas"]
+                                 if row["censored_trials_difference"] > 0)
     metrics = result.metrics if scorable else {key: None for key in result.metrics}
     source_snapshot = result.output_dir / "candidate_source.py"
     with source_snapshot.open("xb") as handle:
@@ -147,6 +158,7 @@ def evaluate_candidate(
         candidate_source_path=str(source_snapshot),
         candidate_identity_verified=verified, output_dir=str(result.output_dir),
         evaluation_path=str(result.output_dir / "evaluation.json"), error=error,
+        reference=reference_identity,
     )
     with (result.output_dir / "feedback.json").open("x", encoding="utf-8") as handle:
         json.dump(feedback.to_dict(), handle, indent=2, sort_keys=True, allow_nan=False)

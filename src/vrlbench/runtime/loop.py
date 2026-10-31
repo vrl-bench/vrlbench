@@ -116,19 +116,33 @@ def _validated_policy_trajectory(*, evidence: Mapping[str, Any], trial_metadata:
     normalized = normalize_policy_evidence(evidence)
     return (render_policy_trajectory(normalized), len(normalized['steps']))
 
-def _notify_closed_controller_trial(controller: Any | None, *, trajectory: str,
-                                    actor_trajectory: str, trial_index: int,
-                                    close_reason: str, policy_evidence_eligible: bool,
-                                    has_future_trial: bool, model: str,
-                                    er_name: str, er_section: str='') -> None:
-    """Report a closed opportunity without invoking a next-trial update.
-
-    A valid final failure still has an executed trace. New controllers can
-    consume that terminal record; old controllers retain their budget-only
-    notification, without acquiring a new required protocol method.
-    """
+def _notify_controller_trial(controller: Any | None, *, trajectory: str,
+                             actor_trajectory: str, trial_index: int, success: bool,
+                             metadata: Mapping[str, Any], has_future_trial: bool,
+                             model: str, er_name: str, er_section: str='') -> None:
+    """Deliver one real trial record, retaining legacy controller callbacks."""
     if controller is None:
         return
+    policy_evidence_eligible = metadata.get('policy_evidence_eligible', True) is True
+    observer = getattr(controller, 'observe_trial', None)
+    if callable(observer):
+        observer(trajectory=trajectory if policy_evidence_eligible else '',
+                 actor_trajectory=actor_trajectory, trial_index=trial_index,
+                 success=success, metadata={**metadata,
+                     'policy_evidence_eligible': policy_evidence_eligible,
+                     'trace_available': policy_evidence_eligible,
+                     'has_future_trial': has_future_trial})
+        return
+    # Existing controllers retain their original signatures and update timing.
+    if success:
+        controller.on_success(trajectory, trial_index=trial_index)
+        return
+    if policy_evidence_eligible and has_future_trial:
+        controller.on_failure(trajectory, model, er_name=er_name,
+                              er_section=er_section, trial_index=trial_index)
+        return
+    close_reason = str(metadata.get('trial_close_reason') or (
+        'trial_budget_exhausted' if policy_evidence_eligible else 'actor_protocol_failure'))
     if policy_evidence_eligible:
         hook = getattr(controller, 'on_trial_closed_with_policy_evidence', None)
         if callable(hook):
@@ -215,32 +229,22 @@ def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, ac
     else:
         memory_actor_trajectory = actor_trajectory
     lifecycle_metadata = {**loop_metadata, **shared_trial_metadata}
-    if not success and total_trials > 1:
-        memory_trajectory = strip_visual_artifact_lines(policy_trajectory)
-        with _llm.token_budget_scope(ledger):
+    has_future_trial = not success and total_trials > 1
+    with _llm.token_budget_scope(ledger):
+        er_section = ''
+        if has_future_trial:
+            memory_trajectory = strip_visual_artifact_lines(policy_trajectory)
             if shared_policy_evidence_eligible:
                 with _public_environment_context(loop_metadata):
                     er_slot.on_trial_end(memory_trajectory, actor_trajectory=memory_actor_trajectory, success=False, model=model, trial_index=0, total_trials=total_trials, metadata={**lifecycle_metadata, 'phase': 'shared_t1', 'has_future_trial': True})
             if active_controller and shared_policy_evidence_eligible:
                 with _public_environment_context(loop_metadata):
                     er_section = er_slot.read_for_trial(trial_index=1, total_trials=total_trials, model=model, past_trajectories=[memory_trajectory], metadata={**lifecycle_metadata, 'phase': 'post_failure_spatial'})
-                active_controller.on_failure(policy_trajectory, model, er_name=er_slot.__class__.__name__, er_section=er_section, trial_index=0)
-            elif active_controller:
-                _notify_closed_controller_trial(active_controller, trajectory=policy_trajectory,
-                    actor_trajectory=actor_trajectory, trial_index=0,
-                    close_reason=str(shared_trial_metadata.get('trial_close_reason') or 'actor_protocol_failure'),
-                    policy_evidence_eligible=False, has_future_trial=True,
-                    model=model, er_name=er_slot.__class__.__name__)
-    elif success and active_controller:
-        active_controller.on_success(policy_trajectory, trial_index=0)
-    elif not success and active_controller:
-        with _llm.token_budget_scope(ledger):
-            _notify_closed_controller_trial(active_controller, trajectory=policy_trajectory,
-                actor_trajectory=actor_trajectory, trial_index=0,
-                close_reason=str(shared_trial_metadata.get('trial_close_reason') or (
-                    'trial_budget_exhausted' if shared_policy_evidence_eligible else 'actor_protocol_failure')),
-                policy_evidence_eligible=shared_policy_evidence_eligible,
-                has_future_trial=False, model=model, er_name=er_slot.__class__.__name__)
+        _notify_controller_trial(active_controller, trajectory=policy_trajectory,
+            actor_trajectory=actor_trajectory, trial_index=0, success=bool(success),
+            metadata={**lifecycle_metadata, 'phase': 'shared_t1'},
+            has_future_trial=has_future_trial, model=model,
+            er_name=er_slot.__class__.__name__, er_section=er_section)
     usage_snapshot = ledger.snapshot()
     initial_trial = TrialResult(trial=0, success=bool(success), trajectory=trajectory, policy_trajectory=policy_trajectory, actor_trajectory=actor_trajectory, controller_state=snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None, spatial_state=snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None, trial_metadata=shared_trial_metadata, llm_usage=usage_snapshot)
     return (EpisodeResult(trials=[initial_trial], resource_usage=usage_snapshot), ledger)
@@ -427,22 +431,15 @@ def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], 
         if policy_evidence_eligible and (not success) and has_future_trial:
             with _public_environment_context(loop_metadata):
                 er_slot.on_trial_end(memory_trajectory, actor_trajectory=memory_actor_trajectory, success=success, model=model, trial_index=t, total_trials=total_trials, metadata={**trial_lifecycle_metadata, 'phase': 'trial_end', 'has_future_trial': has_future_trial})
-        if success:
-            if active_controller:
-                active_controller.on_success(policy_trajectory, trial_index=t)
-        elif has_future_trial and policy_evidence_eligible:
-            if active_controller:
-                with _public_environment_context(loop_metadata):
-                    next_er_section = er_slot.read_for_trial(trial_index=t + 1, total_trials=total_trials, model=model, past_trajectories=policy_trajectories() + [memory_trajectory], metadata={**trial_lifecycle_metadata, 'phase': 'post_failure_spatial'})
-                active_controller.on_failure(policy_trajectory, model, er_name=er_slot.__class__.__name__, er_section=next_er_section, trial_index=t)
-        elif not success and (not policy_evidence_eligible or not has_future_trial):
-            _notify_closed_controller_trial(active_controller, trajectory=policy_trajectory,
-                actor_trajectory=actor_trajectory, trial_index=t,
-                close_reason=str(trial_metadata.get('trial_close_reason') or (
-                    'trial_budget_exhausted' if policy_evidence_eligible else 'actor_protocol_failure')),
-                policy_evidence_eligible=policy_evidence_eligible,
-                has_future_trial=has_future_trial, model=model,
-                er_name=er_slot.__class__.__name__, er_section=er_section)
+        next_er_section = er_section
+        if active_controller and not success and has_future_trial and policy_evidence_eligible:
+            with _public_environment_context(loop_metadata):
+                next_er_section = er_slot.read_for_trial(trial_index=t + 1, total_trials=total_trials, model=model, past_trajectories=policy_trajectories() + [memory_trajectory], metadata={**trial_lifecycle_metadata, 'phase': 'post_failure_spatial'})
+        _notify_controller_trial(active_controller, trajectory=policy_trajectory,
+            actor_trajectory=actor_trajectory, trial_index=t, success=bool(success),
+            metadata={**trial_lifecycle_metadata, 'phase': 'trial_end'},
+            has_future_trial=has_future_trial and not success, model=model,
+            er_name=er_slot.__class__.__name__, er_section=next_er_section)
         controller_state = snapshot_controller_after_success(active_controller) if success and active_controller else active_controller.snapshot() if active_controller else None
         result.trials.append(TrialResult(trial=t, success=success, trajectory=trajectory, policy_trajectory=policy_trajectory, actor_trajectory=actor_trajectory, context='\n\n'.join((value for value in (context, user_context) if value)), temporal_decision=temporal_decision, spatial_state_pre=controller_state_pre, spatial_state=controller_state, controller_decision=controller_decision, controller_state_pre=controller_state_pre, controller_state=controller_state, trial_metadata=trial_metadata, llm_usage=usage_ledger.delta(usage_before), system_context=context, user_context=user_context))
         if on_trial is not None:
