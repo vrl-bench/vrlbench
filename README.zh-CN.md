@@ -30,6 +30,39 @@ VRL-Bench 是清华大学 NASP 团队的开源系统框架，用于**开发、�
 
 VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。在可重置的任务环境中，保持执行智能体、任务、总尝试次数和单轮交互预算一致，记录每轮的记忆、动作、反馈和结果。研究者和工程师可以围绕自己的智能体与任务构建仿真，在其中比较、改进记忆系统，再将经过评估的同一实现用于该智能体的真实任务。
 
+## 最新动态
+
+- 接入 [WebArena](docs/QUICKSTART.md#use-webarena) 和 [OSWorld](docs/QUICKSTART.md#use-osworld)，将统一评测流程扩展到在线网页与桌面任务。
+- 新增[仿真回放 Web UI](#replay)，逐步查看真实页面、实际动作、记忆与预算消耗。
+- 引入 [VEX²](docs/DEVELOPMENT.md#reference-implementations)，用语言模型调度探索与利用，六个评估设置的实测成功率均高于无记忆 Retry。
+- 通过[经验暴露控制实验](docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision)，揭示语言强化学习中的探索—利用张力：更多重放并不总能带来更好表现。
+- 在[公平的多轮试错比较](docs/RESEARCH.md#memory-can-helpor-hurt)中发现，多个领先记忆方法仍不能稳定胜过无记忆 Retry。
+- 重评 [Reflexion 的多轮试错表现](docs/RESEARCH.md#memory-can-helpor-hurt)，发现反思也可能降低任务成功率。
+- …
+
+<a id="replay"></a>
+
+**回放浏览器与桌面操作。** 逐步查看智能体当时看到的页面、执行的动作、实际收到的记忆、环境反馈，以及剩余尝试次数和行动预算。
+
+<p align="center">
+  <a href="docs/assets/replay/webarena.jpg"><img src="docs/assets/replay/webarena-preview.jpg" width="100%" alt="WebArena 第二轮第一次行动的紧凑回放视图：usb wifi 搜索结果、已执行的搜索动作、智能体实际收到的反思片段，以及剩余尝试次数和行动预算。"></a>
+</p>
+
+*WebArena 第二轮的紧凑视图：对照真实页面、实际动作、记忆片段和剩余预算。点击预览可查看完整回放截图。*
+
+<details>
+<summary>OSWorld：查看桌面操作与每轮结果</summary>
+
+<p align="center">
+  <a href="docs/assets/replay/osworld.jpg"><img src="docs/assets/replay/osworld-preview.jpg" width="100%" alt="OSWorld 第二轮第二次行动的紧凑回放视图：已打开系统菜单的 Ubuntu 桌面、实际执行的 PyAutoGUI 动作、反思片段和已用尽的行动预算。本轮未成功。"></a>
+</p>
+
+*桌面短测的紧凑视图：共两轮尝试，每轮两次行动。图中动作打开了系统菜单，本轮未成功。点击预览可查看完整回放截图。*
+
+</details>
+
+## 仿真器
+
 <a id="memory-can-hurt"></a>
 
 **记忆可能反而损害智能体的表现。** 我们在 MiniWoB 和 WebShop 的三种模型[评估](https://arxiv.org/abs/2609.12404)中发现：在公平的多轮试错预算下，多个领先记忆方法仍不能稳定超过朴素的无记忆 Retry。有些设置中成功率提升，有些则反而下降。
@@ -41,8 +74,6 @@ VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。
 *六轮尝试内，相对无记忆 Retry 的成功率变化，单位为百分点；误差线为配对 95% 置信区间，实心标记表示区间不包含零，星号表示仅使用失败信息的多轮试错适配。[实验与解读](docs/RESEARCH.md#memory-can-helpor-hurt)。*
 
 **公平评估带来了一个意外发现：语言强化学习同样存在探索—利用张力。** 已有经验可以指导后续尝试，依赖经验也可能压缩有价值的探索。[反思暴露控制实验](docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision)表明，更多地重放反思，反而可能降低任务成功率；这种影响在单次使用或跨任务复用中不易看清。
-
-<a id="仿真器"></a>
 
 - **[仿真真实任务](docs/SIMULATION.md)。** 围绕同一任务反复尝试，失败后重置，成功或用尽尝试次数后停止，观察经验怎样改变后续尝试。
 - **公平比较记忆方法。** 保持执行智能体、任务、总尝试次数与单轮交互预算一致，既可比较不同记忆系统，也可与[无记忆 Retry](docs/RESEARCH.md#memory-can-helpor-hurt) 对照。
@@ -63,16 +94,6 @@ VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。
   <strong>0.1</strong> · 在线计算机操作任务 · 可复用的记忆方法库 ·
   可扩展的方法、模型与任务
 </p>
-
-## 最新动态
-
-- 接入 [WebArena](docs/QUICKSTART.md#use-webarena) 和 [OSWorld](docs/QUICKSTART.md#use-osworld)，将统一评测流程扩展到在线网页与桌面任务。
-- 新增[仿真回放 Web UI](#replay)，逐步查看真实页面、实际动作、记忆与预算消耗。
-- 引入 [VEX²](docs/DEVELOPMENT.md#reference-implementations)，用语言模型调度探索与利用，六个评估设置的实测成功率均高于无记忆 Retry。
-- 通过[经验暴露控制实验](docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision)，揭示语言强化学习中的探索—利用张力：更多重放并不总能带来更好表现。
-- 在[公平的多轮试错比较](docs/RESEARCH.md#memory-can-helpor-hurt)中发现，多个领先记忆方法仍不能稳定胜过无记忆 Retry。
-- 重评 [Reflexion 的多轮试错表现](docs/RESEARCH.md#memory-can-helpor-hurt)，发现反思也可能降低任务成功率。
-- …
 
 ## 快速开始
 
@@ -113,32 +134,13 @@ vrlbench compare runs/webshop_retry runs/webshop_trace_memory runs/webshop_refle
 
 记忆方法复用 Retry 已完成的首轮尝试，并保持任务与预算一致。检查各轮上下文和动作，观察不同方法怎样利用失败反馈，再比较成功率、失败恢复和解决任务所需的尝试数。通过[配对统计分析](docs/STATISTICS.md)进一步判断差异及其不确定性。
 
-<a id="replay"></a>
-
-**回放浏览器与桌面操作。** 逐步查看智能体当时看到的页面、执行的动作、实际收到的记忆、环境反馈，以及剩余尝试次数和行动预算。
+**回放已保存的运行。**
 
 ```bash
 vrlbench replay runs/webshop_reflexion
 ```
 
 回放只读取已保存的记录，不会新增模型调用。如需查看原生页面快照，在运行前[启用页面录制](docs/QUICKSTART.md#inspect-and-compare)。
-
-<p align="center">
-  <a href="docs/assets/replay/webarena.jpg"><img src="docs/assets/replay/webarena-preview.jpg" width="100%" alt="WebArena 第二轮第一次行动的紧凑回放视图：usb wifi 搜索结果、已执行的搜索动作、智能体实际收到的反思片段，以及剩余尝试次数和行动预算。"></a>
-</p>
-
-*WebArena 第二轮的紧凑视图：对照真实页面、实际动作、记忆片段和剩余预算。点击预览可查看完整回放截图。*
-
-<details>
-<summary>OSWorld：查看桌面操作与每轮结果</summary>
-
-<p align="center">
-  <a href="docs/assets/replay/osworld.jpg"><img src="docs/assets/replay/osworld-preview.jpg" width="100%" alt="OSWorld 第二轮第二次行动的紧凑回放视图：已打开系统菜单的 Ubuntu 桌面、实际执行的 PyAutoGUI 动作、反思片段和已用尽的行动预算。本轮未成功。"></a>
-</p>
-
-*桌面短测的紧凑视图：共两轮尝试，每轮两次行动。图中动作打开了系统菜单，本轮未成功。点击预览可查看完整回放截图。*
-
-</details>
 
 <details>
 <summary>案例：对照六轮实验中的记忆、动作和结果</summary>

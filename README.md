@@ -43,6 +43,54 @@ actions, feedback, and outcomes. Researchers and engineers can build simulations
 around their own agents and tasks, compare and refine memory systems under the
 same conditions, then use the evaluated implementation in that agent's real tasks.
 
+## News
+
+- Added [WebArena](docs/QUICKSTART.md#use-webarena) and
+  [OSWorld](docs/QUICKSTART.md#use-osworld), extending the shared evaluation
+  workflow to online web and desktop tasks.
+- Added a [replay Web UI](#replay) to inspect real pages, actions, memory, and
+  budget use step by step.
+- Introduced [VEX²](docs/DEVELOPMENT.md#reference-implementations), an LM-based
+  exploration–exploitation scheduler with positive observed success-rate gains
+  over memory-free Retry in all six evaluated settings.
+- [Experience-exposure experiments](docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision)
+  revealed an exploration–exploitation tension in verbal RL: more replay is
+  not always better.
+- [Fair trial-and-error comparisons](docs/RESEARCH.md#memory-can-helpor-hurt)
+  found that leading memory methods do not consistently outperform
+  memory-free Retry.
+- Revisited [Reflexion's trial-and-error evaluation](docs/RESEARCH.md#memory-can-helpor-hurt)
+  and found that reflection can reduce task success.
+- …
+
+<a id="replay"></a>
+
+**Replay browser and desktop actions.** Step through what the agent saw and
+did, alongside the memory it received, environment feedback, and remaining
+trial and action budgets.
+
+<p align="center">
+  <a href="docs/assets/replay/webarena.jpg"><img src="docs/assets/replay/webarena-preview.jpg" width="100%" alt="Compact view of WebArena replay at trial two, action one: the search results for usb wifi, the executed search action, an excerpt of the actual reflection supplied to the agent, and the remaining trial and action budgets."></a>
+</p>
+
+*WebArena, trial 2: compact view of the recorded page, action, memory excerpt,
+and remaining budgets. Click the preview to see the full replay screenshot.*
+
+<details>
+<summary>OSWorld: inspect desktop actions and trial outcomes</summary>
+
+<p align="center">
+  <a href="docs/assets/replay/osworld.jpg"><img src="docs/assets/replay/osworld-preview.jpg" width="100%" alt="Compact view of OSWorld replay at trial two, action two: a recorded Ubuntu desktop with the system menu open, the executed PyAutoGUI action, a reflection excerpt, and the exhausted action budget. The trial ended without success."></a>
+</p>
+
+*Compact view of a short desktop run with two trials and two actions each.
+The selected action opens the system menu; the trial ends without success.
+Click the preview to see the full replay screenshot.*
+
+</details>
+
+## The simulator
+
 <a id="memory-can-hurt"></a>
 
 **Memory can hurt the agents it is meant to improve.** In our
@@ -66,8 +114,6 @@ can also displace useful exploration. Our
 [controlled reflection-exposure experiments](docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision)
 show that replaying more reflection can reduce task success—an effect that is
 hard to observe in one-off use or cross-task experience reuse.
-
-<a id="the-simulator"></a>
 
 - **[Simulate real tasks](docs/SIMULATION.md).** Run repeated attempts at the
   same task, resetting after failure and stopping on success or the trial
@@ -100,26 +146,6 @@ hard to observe in one-off use or cross-task experience reuse.
   <strong>0.1</strong> · Online computer-control tasks · Reusable memory library ·
   Extensible methods, models, and workloads
 </p>
-
-## News
-
-- Added [WebArena](docs/QUICKSTART.md#use-webarena) and
-  [OSWorld](docs/QUICKSTART.md#use-osworld), extending the shared evaluation
-  workflow to online web and desktop tasks.
-- Added a [replay Web UI](#replay) to inspect real pages, actions, memory, and
-  budget use step by step.
-- Introduced [VEX²](docs/DEVELOPMENT.md#reference-implementations), an LM-based
-  exploration–exploitation scheduler with positive observed success-rate gains
-  over memory-free Retry in all six evaluated settings.
-- [Experience-exposure experiments](docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision)
-  revealed an exploration–exploitation tension in verbal RL: more replay is
-  not always better.
-- [Fair trial-and-error comparisons](docs/RESEARCH.md#memory-can-helpor-hurt)
-  found that leading memory methods do not consistently outperform
-  memory-free Retry.
-- Revisited [Reflexion's trial-and-error evaluation](docs/RESEARCH.md#memory-can-helpor-hurt)
-  and found that reflection can reduce task success.
-- …
 
 ## Quick start
 
@@ -169,11 +195,7 @@ and budgets. Inspect the recorded contexts and actions to see how each method
 uses failure feedback, then compare success, recovery, and trials to solve.
 Add [paired statistics](docs/STATISTICS.md) to assess differences and uncertainty.
 
-<a id="replay"></a>
-
-**Replay browser and desktop actions.** Step through what the agent saw and
-did, alongside the memory it received, environment feedback, and remaining
-trial and action budgets.
+**Replay a recorded run.**
 
 ```bash
 vrlbench replay runs/webshop_reflexion
@@ -182,26 +204,6 @@ vrlbench replay runs/webshop_reflexion
 Replay reads saved records without new model calls.
 [Enable page capture](docs/QUICKSTART.md#inspect-and-compare) before a run to
 include native page snapshots.
-
-<p align="center">
-  <a href="docs/assets/replay/webarena.jpg"><img src="docs/assets/replay/webarena-preview.jpg" width="100%" alt="Compact view of WebArena replay at trial two, action one: the search results for usb wifi, the executed search action, an excerpt of the actual reflection supplied to the agent, and the remaining trial and action budgets."></a>
-</p>
-
-*WebArena, trial 2: compact view of the recorded page, action, memory excerpt,
-and remaining budgets. Click the preview to see the full replay screenshot.*
-
-<details>
-<summary>OSWorld: inspect desktop actions and trial outcomes</summary>
-
-<p align="center">
-  <a href="docs/assets/replay/osworld.jpg"><img src="docs/assets/replay/osworld-preview.jpg" width="100%" alt="Compact view of OSWorld replay at trial two, action two: a recorded Ubuntu desktop with the system menu open, the executed PyAutoGUI action, a reflection excerpt, and the exhausted action budget. The trial ended without success."></a>
-</p>
-
-*Compact view of a short desktop run with two trials and two actions each.
-The selected action opens the system menu; the trial ends without success.
-Click the preview to see the full replay screenshot.*
-
-</details>
 
 <details>
 <summary>Example: inspect a recorded six-trial comparison</summary>
