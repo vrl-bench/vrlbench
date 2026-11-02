@@ -3,17 +3,22 @@
 
   const byId = (id) => document.getElementById(id);
   const recording = window.VRLBENCH_REPLAY;
-  const dialog = byId("run-dialog");
-  const openButton = byId("open-run");
-  if (!recording?.trials?.length) {
-    openButton.disabled = true;
-    openButton.textContent = "Recording unavailable";
+  const player = byId("recorded-replay");
+  if (!player) return;
+
+  const positions = (recording?.trials || []).flatMap((trial) =>
+    (trial.frames || []).map((frame, frameIndex) => ({ trial, frame, frameIndex }))
+  );
+  if (!positions.length) {
+    byId("run-task").textContent = "Recording unavailable.";
+    byId("run-progress").textContent = "No recorded actions are available.";
+    byId("run-image").hidden = true;
+    player.querySelectorAll("button, select").forEach((control) => {
+      control.disabled = true;
+    });
     return;
   }
 
-  const positions = recording.trials.flatMap((trial) =>
-    trial.frames.map((frame, frameIndex) => ({ trial, frame, frameIndex }))
-  );
   let selected = Math.max(0, positions.findIndex(({ trial }) => trial.trial_number === 2));
   let phase = "after";
   const positionSelect = byId("run-position");
@@ -28,7 +33,7 @@
   const title = `${recording.environment} · ${method} · ${recording.model}`;
   if (byId("run-title")) byId("run-title").textContent = title;
   if (byId("run-task")) byId("run-task").textContent = recording.task;
-  dialog.setAttribute("aria-label", `${title}. Up to ${recording.trial_budget} trials, ${recording.max_environment_steps} actions per trial.`);
+  player.setAttribute("aria-label", `${title}. Up to ${recording.trial_budget} trials, ${recording.max_environment_steps} actions per trial.`);
 
   positions.forEach(({ trial, frameIndex }, index) => {
     const option = document.createElement("option");
@@ -75,11 +80,6 @@
     render();
   }
 
-  openButton.addEventListener("click", () => {
-    render();
-    if (!dialog.open) dialog.showModal();
-  });
-  byId("close-run").addEventListener("click", () => dialog.close());
   positionSelect.addEventListener("change", () => select(Number(positionSelect.value)));
   byId("run-prev").addEventListener("click", () => select(selected - 1));
   byId("run-next").addEventListener("click", () => select(selected + 1));

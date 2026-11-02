@@ -8,7 +8,6 @@
   <title>VRL-Bench — A Unified Simulator for Agent Memory Systems</title>
   <link rel="icon" href="assets/mark.png">
   <link rel="stylesheet" href="styles.css">
-  <script src="assets/paired-case.js" defer></script>
   <script src="assets/replay-data.js" defer></script>
   <script src="app.js" defer></script>
   <script src="recorded-viewer.js" defer></script>
@@ -17,7 +16,7 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <a class="brand" href="#" aria-label="VRL-Bench home"><img src="assets/mark.png" width="32" height="32" alt=""><span>VRL-Bench</span></a>
-    <nav aria-label="Main navigation"><a href="#comparison">Explore</a><a href="#simulator">Simulator</a><a href="#build">Build</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md">Docs ↗</a><a class="nav-github" href="https://github.com/vrl-bench/vrlbench">GitHub ↗</a></nav>
+    <nav aria-label="Main navigation"><a href="#inspect">Replay</a><a href="#simulator">Simulator</a><a href="#build">Build</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md">Docs ↗</a><a class="nav-github" href="https://github.com/vrl-bench/vrlbench">GitHub ↗</a></nav>
   </header>
 
   <main id="main">
@@ -25,30 +24,22 @@
       <p class="eyebrow">A UNIFIED SIMULATOR FOR AGENT MEMORY SYSTEMS</p>
       <h1>Memory can help.<br>It can also <span>hurt.</span></h1>
       <p class="hero-lead">Does experience make your agent better?<br> VRL-Bench lets you find out through fair trial-and-error simulation.</p>
-      <div class="resource-links"><a href="https://github.com/vrl-bench/vrlbench"><span aria-hidden="true">⌘</span> Code</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md"><span aria-hidden="true">↗</span> Documentation</a><a href="https://arxiv.org/abs/2609.12404"><span aria-hidden="true">▤</span> Paper</a><a class="resource-active" href="#comparison"><span aria-hidden="true">↓</span> Explore the comparison</a></div>
+      <div class="resource-links"><a href="https://github.com/vrl-bench/vrlbench"><span aria-hidden="true">⌘</span> Code</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md"><span aria-hidden="true">↗</span> Documentation</a><a href="https://arxiv.org/abs/2609.12404"><span aria-hidden="true">▤</span> Paper</a><a class="resource-active" href="#inspect"><span aria-hidden="true">↓</span> Explore the replay</a></div>
     </section>
 
-    <section class="case-study wrap" id="comparison" aria-labelledby="case-heading">
-      <div class="case-heading"><div><p class="eyebrow">ONE RECORDED TASK. TWO CONTINUATIONS.</p><h2 id="case-heading">Same failure. Different paths.</h2></div><span class="case-source">WebShop <span>·</span> <span id="case-model">GPT-5.4-nano</span> <span>·</span> 6-trial budget</span></div>
-      <div class="story-tabs" role="tablist" aria-label="Explore a recorded paired comparison"><button id="story-tab-0" role="tab" aria-controls="story-panel" aria-selected="false" tabindex="-1" data-stage="0"><span>01</span> Shared failure</button><button id="story-tab-1" role="tab" aria-controls="story-panel" aria-selected="true" tabindex="0" data-stage="1"><span>02</span> Next attempts</button><button id="story-tab-2" role="tab" aria-controls="story-panel" aria-selected="false" tabindex="-1" data-stage="2"><span>03</span> Final outcomes</button></div>
-      <div class="story-panel" id="story-panel" role="tabpanel" aria-labelledby="story-tab-1">
-        <div class="task-line"><span>TASK</span><p id="case-task">i am looking for a grey sectional sofa for my living room</p></div>
-        <div id="shared-scene" hidden><div class="shared-label"><span class="small-label">IDENTICAL FIRST TRIAL</span><span class="badge failure">Unsuccessful</span></div><div class="action-flow" id="shared-actions"></div><p class="shared-memory">No cross-trial memory in either condition.</p></div>
-        <div id="paths-scene">
-          <article class="method-row reflection-row"><div class="method-name"><h3>Reflexion</h3><span>Retained reflection</span></div><div class="path-detail"><div class="memory-quote"><span class="small-label">MEMORY EXCERPT</span><blockquote id="memory-excerpt"></blockquote></div><div class="path-actions"><span class="small-label">KEY ACTIONS IN THE SECOND TRIAL</span><div class="action-flow" id="reflexion-actions"></div></div></div><span class="badge failure">T2 · unsuccessful</span></article>
-          <article class="method-row retry-row"><div class="method-name"><h3>Retry</h3><span>No cross-trial memory</span></div><div class="path-detail"><p class="empty-memory">A fresh attempt, without reflection.</p><div class="path-actions"><span class="small-label">KEY ACTIONS IN THE SECOND TRIAL</span><div class="action-flow" id="retry-actions"></div></div></div><span class="badge success">T2 · success</span></article>
-        </div>
-        <div id="outcomes-scene" hidden>
-          <div class="outcome-method"><div><h3>Reflexion</h3><p>Unsolved through trial 6</p></div><div class="trial-marks" id="reflexion-outcomes"></div></div>
-          <div class="outcome-method"><div><h3>Retry</h3><p>Solved on trial 2; stopped</p></div><div class="trial-marks" id="retry-outcomes"></div></div>
-        </div>
-        <div class="story-explanation"><span class="explanation-mark" aria-hidden="true">↳</span><p id="story-explanation"></p></div>
+    <section class="replay-section wrap" id="inspect" aria-labelledby="replay-heading">
+      <span class="anchor-alias" id="comparison" aria-hidden="true"></span>
+      <div class="replay-heading"><p class="eyebrow">TRIAL-AND-ERROR REPLAY</p><h2 id="replay-heading">See what the agent saw.</h2><p>Step through its actions alongside the memory it received and the trial and action budgets.</p></div>
+      <div class="recorded-replay" id="recorded-replay" aria-labelledby="run-title">
+        <div class="run-header"><div><p class="small-label">RECORDED RUN</p><h3 id="run-title">WebArena · Reflexion · GPT-4.1</h3><p id="run-task"></p></div><a class="text-link" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#inspect-and-compare">Replay your runs ↗</a></div>
+        <div class="run-control"><button id="run-prev" aria-label="Previous recorded action">←</button><label for="run-position" class="visually-hidden">Recorded position</label><select id="run-position"></select><button id="run-next" aria-label="Next recorded action">→</button><div class="phase-buttons"><button id="run-before" aria-pressed="false">Before</button><button id="run-after" aria-pressed="true">After</button></div></div>
+        <div class="run-workspace"><div class="run-page"><span class="small-label">RECORDED PAGE</span><img id="run-image" alt="Native page snapshot at the selected replay position"><span class="small-label">EXECUTED ACTION</span><code id="run-action"></code></div><aside><span class="small-label">MEMORY SUPPLIED TO THIS TRIAL</span><pre id="run-memory"></pre><div class="run-state"><p id="run-progress"></p><p id="run-budget"></p><p id="run-outcome" aria-live="polite"></p></div></aside></div>
+        <p class="run-note">Actual saved pages, actions, and memory. Playback makes no model calls.</p>
       </div>
-      <div class="case-footnote"><p>Selected WebShop case <code>sample_0009</code> from the six-trial study. Annotated recorded actions, not a browser screenshot.</p><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/RESEARCH.md#follow-what-memory-changes">About this case ↗</a></div>
     </section>
 
     <section class="section finding-section wrap" id="findings">
-      <div class="section-title"><p class="eyebrow">FROM ONE CASE TO A CONTROLLED COMPARISON</p><h2>Memory gains are not automatic.</h2><p>Across three models on MiniWoB and WebShop, leading memory methods improve success in some settings and reduce it in others. Fair trial budgets make these differences visible.</p></div>
+      <div class="section-title"><p class="eyebrow">CONTROLLED MEMORY EVALUATION</p><h2>Memory gains are not automatic.</h2><p>Across three models on MiniWoB and WebShop, leading memory methods improve success in some settings and reduce it in others. Fair trial budgets make these differences visible.</p></div>
       <figure class="effects-figure"><a href="assets/memory-effects.svg" aria-label="Open the full-size comparison figure"><img src="assets/memory-effects.svg" alt="All eighteen success-rate changes versus memory-free Retry for Reflexion, DC-Cu* and ACE*, across three models on MiniWoB and WebShop. Positive and negative changes appear, with paired 95 percent confidence intervals." loading="lazy"></a><figcaption>Success-rate change versus Retry within six trials, in percentage points. Bars: paired 95% confidence intervals. Filled points: intervals excluding zero.</figcaption></figure>
       <p class="research-link"><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/RESEARCH.md">Read the findings and experimental settings <span aria-hidden="true">↗</span></a></p>
       <div class="exposure-section"><div><p class="eyebrow">EXPLORATION & EXPLOITATION</p><h3>When should experience<br>be replayed?</h3><p>Retained experience can guide an agent—and displace useful exploration. Reflection-exposure experiments revealed this tension in verbal reinforcement learning.</p><p>Control experience exposure with the Replay gate, or study an integrated scheduler such as VEX².</p><a class="text-link" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision">Explore the exposure experiments ↗</a></div><a class="exposure-figure" href="assets/reflection-exposure.svg" aria-label="Open reflection exposure experiment figure"><img src="assets/reflection-exposure.svg" alt="Fixed reflection exposure experiments on AlfWorld and HotPotQA show that more replay does not always yield greater success." loading="lazy"></a></div>
@@ -60,8 +51,6 @@
       <figure class="architecture"><img src="assets/simulator-overview.svg" alt="Real-world tasks and the same agent connect to a trial-and-error simulator with replaceable memory methods, models and environments, controlled replay exposure, and statistical analysis. The evaluated memory implementation returns to the original agent." loading="lazy"><figcaption>Start from real tasks. Develop and evaluate memory in simulation. Reuse the evaluated implementation in the same real agent. <a href="assets/simulator-overview.svg">Full architecture ↗</a></figcaption></figure>
       <div class="support-row"><span class="small-label">ONLINE ENVIRONMENTS</span><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#use-miniwob">MiniWoB</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#webshop-setup">WebShop</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#use-webarena">WebArena</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#use-osworld">OSWorld</a><a class="extend-link" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/DEVELOPMENT.md#add-a-task-environment">Your tasks ↗</a></div>
     </div></section>
-
-    <section class="section wrap replay-section" id="inspect"><div class="replay-intro"><div><p class="eyebrow">LOOK INSIDE A RUN</p><h2>See the page.<br>Read the memory.<br>Follow the action.</h2><p>Step through a real WebArena recording, with native page snapshots, the actual memory supplied to the actor, and both trial and action budgets.</p><button class="button dark-button" id="open-run">Open recorded replay <span aria-hidden="true">↗</span></button><p class="run-caption">Reflexion · GPT-4.1 · 6-trial budget<br>Two trials recorded; stopped after success.</p></div><div class="replay-preview"><img src="assets/frame-1fa7bd072421ca25.png" alt="The native WebArena shopping page recorded after the first action of the second trial, showing search results for usb wifi." loading="lazy"><div class="snapshot-caption"><span class="small-label">ACTUAL PAGE SNAPSHOT</span><code>type [337] [usb wifi] [1]</code><span>Trial 2 · Action 1</span></div></div></div></section>
 
     <section class="section build-section" id="build"><div class="wrap">
       <div class="section-title"><p class="eyebrow">BUILD ON A COMMON FOUNDATION</p><h2>Your next memory system<br>starts here.</h2><p>Use a reference method, connect your own implementation, and improve it from task-level feedback. Compare a new version with the previous one under the same conditions.</p></div>
@@ -80,11 +69,5 @@ vrlbench compare runs/webshop_retry runs/webshop_reflexion</code></pre><p>Simula
 
   <footer class="wrap"><div><a class="brand" href="#"><img src="assets/mark.png" width="29" height="29" alt=""><span>VRL-Bench</span></a><p>An open systems framework from NASP, Tsinghua University.</p></div><div class="footer-links"><a href="https://github.com/vrl-bench/vrlbench">GitHub ↗</a><a href="https://arxiv.org/abs/2609.12404">Paper ↗</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/CITATION.bib">Cite ↗</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/README.zh-CN.md">中文 ↗</a></div></footer>
 
-  <dialog id="run-dialog" aria-labelledby="run-title">
-    <div class="run-header"><div><p class="small-label">RECORDED RUN</p><h2 id="run-title">WebArena · Reflexion · GPT-4.1</h2><p id="run-task"></p></div><button id="close-run" aria-label="Close recorded replay">×</button></div>
-    <div class="run-control"><button id="run-prev" aria-label="Previous recorded action">←</button><label for="run-position" class="visually-hidden">Recorded position</label><select id="run-position"></select><button id="run-next" aria-label="Next recorded action">→</button><div class="phase-buttons"><button id="run-before" aria-pressed="false">Before</button><button id="run-after" aria-pressed="true">After</button></div></div>
-    <div class="run-workspace"><div class="run-page"><img id="run-image" alt="Native page snapshot at the selected replay position"><span class="small-label">RECORDED ACTION</span><code id="run-action"></code></div><aside><span class="small-label">ACTUAL MEMORY CONTEXT</span><pre id="run-memory"></pre><div class="run-state"><p id="run-progress"></p><p id="run-budget"></p><p id="run-outcome"></p></div></aside></div>
-    <p class="run-note">A recorded functional example. Page snapshots and context are from the saved run; playback makes no model calls.</p>
-  </dialog>
 </body>
 </html>
