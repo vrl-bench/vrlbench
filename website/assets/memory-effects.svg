@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="842" viewBox="0 0 1400 842" role="img" aria-labelledby="chart-title chart-description">
+  <title id="chart-title">Memory does not reliably beat simply trying again.</title>
+  <desc id="chart-description">Observed SR@6 differences relative to memory-free Retry for Reflexion, DC-Cu*, and ACE*, across three models on MiniWoB and WebShop. All 18 estimates and paired 95% confidence intervals share one scale. Above zero favors memory; below zero favors Retry. Filled markers identify intervals excluding zero.</desc>
+  <metadata id="source-data">{"metric":"SR@6 difference relative to memory-free Retry","unit":"percentage points","trials":6,"source":"https://arxiv.org/abs/2609.12404","source_figure":"fig_vrlbench_reevaluation_paired_effects","source_summary_sha256":"8e0206a4d160ce9d0bc5b52298450d81544fbd33a292903cd77fb83cfb839a2d","interval":"paired 95% percentile bootstrap","bootstrap_resamples":100000,"bootstrap_seed":0,"observations":18,"y_origin":484,"pixels_per_percentage_point":8}</metadata>
+  <defs>
+    <style>
+      text { font-family: Inter, "Helvetica Neue", Arial, sans-serif; fill: #192b40; }
+      .headline { font-size: 46px; font-weight: 700; letter-spacing: -1px; }
+      .scope { font-size: 23px; fill: #5b6877; }
+      .brand { font-size: 23px; font-weight: 650; fill: #566577; }
+      .axis-label { font-size: 22px; fill: #526171; }
+      .panel-title { font-size: 29px; font-weight: 700; }
+      .sample { font-size: 21px; fill: #697685; }
+      .method-label { font-size: 22px; font-weight: 550; }
+      .grid { stroke: #e3e8ed; stroke-width: 1.2; }
+      .spine { stroke: #9eacb9; stroke-width: 1.5; }
+      .zero { stroke: #33465b; stroke-width: 2.8; }
+      .tick { font-size: 22px; fill: #596879; text-anchor: end; }
+      .model { font-size: 24px; font-weight: 600; text-anchor: middle; }
+      .model-detail { font-size: 22px; fill: #667585; text-anchor: middle; }
+      .ci { fill: none; stroke: #647282; stroke-width: 2.6; stroke-linecap: square; }
+      .estimate { stroke: currentColor; stroke-width: 3; }
+      .positive { color: #0b7c72; }
+      .negative { color: #bb5036; }
+      .unresolved .estimate { fill: #fff; }
+      .resolved .estimate { fill: currentColor; }
+      .legend-mark { fill: #fff; stroke: #34485d; stroke-width: 2.7; }
+      .note { font-size: 20px; fill: #657383; }
+    </style>
+    <circle id="marker-circle" r="7.5"/>
+    <path id="marker-triangle" d="M 0 -9 L 7.7942286341 4.5 L -7.7942286341 4.5 Z"/>
+    <rect id="marker-square" x="-7" y="-7" width="14" height="14"/>
+    <marker id="arrow-up" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto" viewBox="0 0 6 6"><path d="M 0 0 L 6 3 L 0 6 Z" fill="#0b7c72"/></marker>
+    <marker id="arrow-down" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto" viewBox="0 0 6 6"><path d="M 0 0 L 6 3 L 0 6 Z" fill="#bb5036"/></marker>
+  </defs>
+  <rect width="1400" height="842" fill="#fff"/>
+  <text x="44" y="61" class="headline">Memory does not reliably beat</text>
+  <text x="44" y="113" class="headline">simply trying again.</text>
+  <text x="1340" y="53" text-anchor="end" class="brand">VRL-Bench</text>
+  <text x="46" y="157" class="scope">3 models · 2 environments · up to 6 trials</text>
+  <text x="135" y="204" class="axis-label">Success-rate change vs Retry (pp)</text>
+  <g aria-label="Methods: circle Reflexion, triangle DC-Cu*, square ACE*">
+    <use href="#marker-circle" x="851" y="196" class="legend-mark"/><text x="871" y="204" class="method-label">Reflexion</text>
+    <use href="#marker-triangle" x="1058" y="196" class="legend-mark"/><text x="1078" y="204" class="method-label">DC-Cu*</text>
+    <use href="#marker-square" x="1242" y="196" class="legend-mark"/><text x="1262" y="204" class="method-label">ACE*</text>
+  </g>
+  <text x="135" y="245" class="panel-title">MiniWoB</text>
+  <text x="670" y="245" text-anchor="end" class="sample">64 task families</text>
+  <text x="800" y="245" class="panel-title">WebShop</text>
+  <text x="1335" y="245" text-anchor="end" class="sample">100 goals</text>
+  <rect x="135" y="484" width="535" height="176" fill="#fcf7f4"/>
+  <rect x="800" y="484" width="535" height="176" fill="#fcf7f4"/>
+  <g class="grid">
+    <path d="M 135 324 H 670 M 800 324 H 1335"/>
+    <path d="M 135 404 H 670 M 800 404 H 1335"/>
+    <path d="M 135 564 H 670 M 800 564 H 1335"/>
+    <path d="M 135 644 H 670 M 800 644 H 1335"/>
+  </g>
+  <g class="spine" fill="none"><path d="M 135 260 V 660 H 670"/><path d="M 800 260 V 660 H 1335"/></g>
+  <path class="zero" d="M 135 484 H 670 M 800 484 H 1335"/>
+  <text x="735" y="477" text-anchor="middle" font-size="19" font-weight="650">Retry = 0</text>
+  <g class="tick">
+    <text x="114" y="332">+20</text><text x="114" y="412">+10</text><text x="114" y="492">0</text>
+    <text x="114" y="572">−10</text><text x="114" y="652">−20</text>
+  </g>
+  <path d="M 63 459 V 309" fill="none" stroke="#0b7c72" stroke-width="2.5" marker-end="url(#arrow-up)"/>
+  <text x="38" y="384" transform="rotate(-90 38 384)" text-anchor="middle" font-size="20" style="fill:#0b7c72">Better than Retry</text>
+  <path d="M 63 510 V 645" fill="none" stroke="#bb5036" stroke-width="2.5" marker-end="url(#arrow-down)"/>
+  <text x="38" y="578" transform="rotate(-90 38 578)" text-anchor="middle" font-size="20" style="fill:#bb5036">Worse than Retry</text>
+
+  <g id="miniwob-deepseek-reflexion" class="observation positive unresolved" data-model="deepseekv4flash" data-benchmark="miniwob" data-method="reflexion" data-estimate="1.5624999999999998" data-lower="-0.625" data-upper="4.0625">
+    <title>MiniWoB · DeepSeek-V4-Flash · Reflexion: +1.5625 pp; 95% CI −0.625 to +4.0625</title>
+    <path class="ci" d="M 186 451.5 V 489 M 178 451.5 H 194 M 178 489 H 194"/><use href="#marker-circle" x="186" y="471.5" class="estimate"/>
+  </g>
+  <g id="miniwob-deepseek-dc" class="observation negative unresolved" data-model="deepseekv4flash" data-benchmark="miniwob" data-method="dynamic_cheatsheet_adapted" data-estimate="-1.5625" data-lower="-5.46875" data-upper="1.7187500000000002">
+    <title>MiniWoB · DeepSeek-V4-Flash · DC-Cu*: −1.5625 pp; 95% CI −5.46875 to +1.71875</title>
+    <path class="ci" d="M 220 470.25 V 527.75 M 212 470.25 H 228 M 212 527.75 H 228"/><use href="#marker-triangle" x="220" y="496.5" class="estimate"/>
+  </g>
+  <g id="miniwob-deepseek-ace" class="observation positive resolved" data-model="deepseekv4flash" data-benchmark="miniwob" data-method="ace_adapted" data-estimate="2.0312499999999996" data-lower="0.15625" data-upper="4.375">
+    <title>MiniWoB · DeepSeek-V4-Flash · ACE*: +2.03125 pp; 95% CI +0.15625 to +4.375</title>
+    <path class="ci" d="M 254 449 V 482.75 M 246 449 H 262 M 246 482.75 H 262"/><use href="#marker-square" x="254" y="467.75" class="estimate"/>
+  </g>
+  <g id="miniwob-gpt-reflexion" class="observation positive unresolved" data-model="gpt54nano" data-benchmark="miniwob" data-method="reflexion" data-estimate="3.4375000000000004" data-lower="-0.31250000000000006" data-upper="8.125">
+    <title>MiniWoB · GPT-5.4 nano · Reflexion: +3.4375 pp; 95% CI −0.3125 to +8.125</title>
+    <path class="ci" d="M 366 419 V 486.5 M 358 419 H 374 M 358 486.5 H 374"/><use href="#marker-circle" x="366" y="456.5" class="estimate"/>
+  </g>
+  <g id="miniwob-gpt-dc" class="observation negative unresolved" data-model="gpt54nano" data-benchmark="miniwob" data-method="dynamic_cheatsheet_adapted" data-estimate="-0.9375" data-lower="-3.125" data-upper="1.7187499999999998">
+    <title>MiniWoB · GPT-5.4 nano · DC-Cu*: −0.9375 pp; 95% CI −3.125 to +1.71875</title>
+    <path class="ci" d="M 400 470.25 V 509 M 392 470.25 H 408 M 392 509 H 408"/><use href="#marker-triangle" x="400" y="491.5" class="estimate"/>
+  </g>
+  <g id="miniwob-gpt-ace" class="observation positive unresolved" data-model="gpt54nano" data-benchmark="miniwob" data-method="ace_adapted" data-estimate="2.03125" data-lower="-0.9375" data-upper="5.46875">
+    <title>MiniWoB · GPT-5.4 nano · ACE*: +2.03125 pp; 95% CI −0.9375 to +5.46875</title>
+    <path class="ci" d="M 434 440.25 V 491.5 M 426 440.25 H 442 M 426 491.5 H 442"/><use href="#marker-square" x="434" y="467.75" class="estimate"/>
+  </g>
+  <g id="miniwob-glm-reflexion" class="observation negative unresolved" data-model="glm47flashx" data-benchmark="miniwob" data-method="reflexion" data-estimate="-1.25" data-lower="-3.28125" data-upper="0.7812500000000003">
+    <title>MiniWoB · GLM-4.7-FlashX · Reflexion: −1.25 pp; 95% CI −3.28125 to +0.78125</title>
+    <path class="ci" d="M 546 477.75 V 510.25 M 538 477.75 H 554 M 538 510.25 H 554"/><use href="#marker-circle" x="546" y="494" class="estimate"/>
+  </g>
+  <g id="miniwob-glm-dc" class="observation negative resolved" data-model="glm47flashx" data-benchmark="miniwob" data-method="dynamic_cheatsheet_adapted" data-estimate="-3.28125" data-lower="-6.25" data-upper="-0.3125000000000003">
+    <title>MiniWoB · GLM-4.7-FlashX · DC-Cu*: −3.28125 pp; 95% CI −6.25 to −0.3125</title>
+    <path class="ci" d="M 580 486.5 V 534 M 572 486.5 H 588 M 572 534 H 588"/><use href="#marker-triangle" x="580" y="510.25" class="estimate"/>
+  </g>
+  <g id="miniwob-glm-ace" class="observation positive unresolved" data-model="glm47flashx" data-benchmark="miniwob" data-method="ace_adapted" data-estimate="0.15625" data-lower="-1.7187500000000002" data-upper="2.1875">
+    <title>MiniWoB · GLM-4.7-FlashX · ACE*: +0.15625 pp; 95% CI −1.71875 to +2.1875</title>
+    <path class="ci" d="M 614 466.5 V 497.75 M 606 466.5 H 622 M 606 497.75 H 622"/><use href="#marker-square" x="614" y="482.75" class="estimate"/>
+  </g>
+
+  <g id="webshop-deepseek-reflexion" class="observation positive unresolved" data-model="deepseekv4flash" data-benchmark="webshop" data-method="reflexion" data-estimate="6" data-lower="0" data-upper="12">
+    <title>WebShop · DeepSeek-V4-Flash · Reflexion: +6 pp; 95% CI 0 to +12</title>
+    <path class="ci" d="M 851 388 V 484 M 843 388 H 859 M 843 484 H 859"/><use href="#marker-circle" x="851" y="436" class="estimate"/>
+  </g>
+  <g id="webshop-deepseek-dc" class="observation positive unresolved" data-model="deepseekv4flash" data-benchmark="webshop" data-method="dynamic_cheatsheet_adapted" data-estimate="1" data-lower="-6" data-upper="8">
+    <title>WebShop · DeepSeek-V4-Flash · DC-Cu*: +1 pp; 95% CI −6 to +8</title>
+    <path class="ci" d="M 885 420 V 532 M 877 420 H 893 M 877 532 H 893"/><use href="#marker-triangle" x="885" y="476" class="estimate"/>
+  </g>
+  <g id="webshop-deepseek-ace" class="observation positive resolved" data-model="deepseekv4flash" data-benchmark="webshop" data-method="ace_adapted" data-estimate="14.000000000000002" data-lower="7.000000000000001" data-upper="22">
+    <title>WebShop · DeepSeek-V4-Flash · ACE*: +14 pp; 95% CI +7 to +22</title>
+    <path class="ci" d="M 919 308 V 428 M 911 308 H 927 M 911 428 H 927"/><use href="#marker-square" x="919" y="372" class="estimate"/>
+  </g>
+  <g id="webshop-gpt-reflexion" class="observation positive resolved" data-model="gpt54nano" data-benchmark="webshop" data-method="reflexion" data-estimate="16" data-lower="8" data-upper="25">
+    <title>WebShop · GPT-5.4 nano · Reflexion: +16 pp; 95% CI +8 to +25</title>
+    <path class="ci" d="M 1031 284 V 420 M 1023 284 H 1039 M 1023 420 H 1039"/><use href="#marker-circle" x="1031" y="356" class="estimate"/>
+  </g>
+  <g id="webshop-gpt-dc" class="observation positive unresolved" data-model="gpt54nano" data-benchmark="webshop" data-method="dynamic_cheatsheet_adapted" data-estimate="6" data-lower="-2" data-upper="14.000000000000002">
+    <title>WebShop · GPT-5.4 nano · DC-Cu*: +6 pp; 95% CI −2 to +14</title>
+    <path class="ci" d="M 1065 372 V 500 M 1057 372 H 1073 M 1057 500 H 1073"/><use href="#marker-triangle" x="1065" y="436" class="estimate"/>
+  </g>
+  <g id="webshop-gpt-ace" class="observation positive resolved" data-model="gpt54nano" data-benchmark="webshop" data-method="ace_adapted" data-estimate="11" data-lower="2" data-upper="20">
+    <title>WebShop · GPT-5.4 nano · ACE*: +11 pp; 95% CI +2 to +20</title>
+    <path class="ci" d="M 1099 324 V 468 M 1091 324 H 1107 M 1091 468 H 1107"/><use href="#marker-square" x="1099" y="396" class="estimate"/>
+  </g>
+  <g id="webshop-glm-reflexion" class="observation negative unresolved" data-model="glm47flashx" data-benchmark="webshop" data-method="reflexion" data-estimate="-4" data-lower="-12" data-upper="4">
+    <title>WebShop · GLM-4.7-FlashX · Reflexion: −4 pp; 95% CI −12 to +4</title>
+    <path class="ci" d="M 1211 452 V 580 M 1203 452 H 1219 M 1203 580 H 1219"/><use href="#marker-circle" x="1211" y="516" class="estimate"/>
+  </g>
+  <g id="webshop-glm-dc" class="observation negative resolved" data-model="glm47flashx" data-benchmark="webshop" data-method="dynamic_cheatsheet_adapted" data-estimate="-11" data-lower="-19" data-upper="-3">
+    <title>WebShop · GLM-4.7-FlashX · DC-Cu*: −11 pp; 95% CI −19 to −3</title>
+    <path class="ci" d="M 1245 508 V 636 M 1237 508 H 1253 M 1237 636 H 1253"/><use href="#marker-triangle" x="1245" y="572" class="estimate"/>
+  </g>
+  <g id="webshop-glm-ace" class="observation negative unresolved" data-model="glm47flashx" data-benchmark="webshop" data-method="ace_adapted" data-estimate="-5" data-lower="-13" data-upper="3">
+    <title>WebShop · GLM-4.7-FlashX · ACE*: −5 pp; 95% CI −13 to +3</title>
+    <path class="ci" d="M 1279 460 V 588 M 1271 460 H 1287 M 1271 588 H 1287"/><use href="#marker-square" x="1279" y="524" class="estimate"/>
+  </g>
+
+  <g aria-label="MiniWoB models">
+    <text x="220" y="703" class="model">DeepSeek-V4</text><text x="220" y="731" class="model-detail">Flash</text>
+    <text x="400" y="703" class="model">GPT-5.4</text><text x="400" y="731" class="model-detail">nano</text>
+    <text x="580" y="703" class="model">GLM-4.7</text><text x="580" y="731" class="model-detail">FlashX</text>
+  </g>
+  <g aria-label="WebShop models">
+    <text x="885" y="703" class="model">DeepSeek-V4</text><text x="885" y="731" class="model-detail">Flash</text>
+    <text x="1065" y="703" class="model">GPT-5.4</text><text x="1065" y="731" class="model-detail">nano</text>
+    <text x="1245" y="703" class="model">GLM-4.7</text><text x="1245" y="731" class="model-detail">FlashX</text>
+  </g>
+  <text x="135" y="781" class="note">Points: observed SR@6 differences · Bars: paired 95% confidence intervals</text>
+  <text x="135" y="813" class="note">Filled markers: interval excludes zero · * Failure-only trial-and-error adaptations</text>
+</svg>
+
