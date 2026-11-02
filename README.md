@@ -11,7 +11,8 @@
 <p align="center">English · <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <a href="#about">About</a> ·
+  <a href="https://vrl-bench.github.io/vrlbench/">Website</a> ·
+  <a href="https://vrl-bench.github.io/vrlbench/#comparison">Interactive demo</a> ·
   <a href="#news">News</a> ·
   <a href="#quick-start">Get Started</a> ·
   <a href="#memory-library">Memory Library</a> ·

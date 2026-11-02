@@ -11,7 +11,8 @@
 <p align="center"><a href="README.md">English</a> · 简体中文</p>
 
 <p align="center">
-  <a href="#项目简介">项目简介</a> ·
+  <a href="https://vrl-bench.github.io/vrlbench/">官网</a> ·
+  <a href="https://vrl-bench.github.io/vrlbench/#comparison">交互演示</a> ·
   <a href="#最新动态">最新动态</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#记忆方法库">记忆方法库</a> ·
