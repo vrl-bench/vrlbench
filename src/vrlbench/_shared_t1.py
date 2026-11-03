@@ -8,12 +8,14 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from ._comparison import comparable_actor, comparable_workload, recorded_condenser_identity
+from ._comparison import (comparable_actor, comparable_workload,
+                          recorded_actor_identity, recorded_condenser_identity)
 from .results import SimulationResult
 
 
 def load_shared_first_trials(spec: Mapping[str, Any], *,
-                             condenser_identity: Mapping[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+                             condenser_identity: Mapping[str, Any] | None = None,
+                             actor_identity: Mapping[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     """Match a completed SDK run and extract only its memory-free first trials.
 
     New records separate the actor's usage from the memory update after failure.
@@ -34,6 +36,10 @@ def load_shared_first_trials(spec: Mapping[str, Any], *,
             before, after = comparable_actor(before), comparable_actor(after)
         if before != after:
             raise ValueError(f"shared first-trial source has different {field}")
+    if actor_identity is not None:
+        current = recorded_actor_identity({"identity": {"plugins": [dict(actor_identity)]}})
+        if current != recorded_actor_identity(payload):
+            raise ValueError("shared first trial has a different actor implementation")
     if condenser_identity is not None:
         # Execution supplies the identity returned by load_factory before any
         # environment/model work. Planning still never imports the factory.

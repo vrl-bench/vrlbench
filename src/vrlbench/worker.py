@@ -212,7 +212,7 @@ def execute_request(spec: Mapping[str, Any]) -> dict[str, Any]:
         with memory_bindings(spec) as (er_name, controller, memory_identity):
             cases, backend_identity = run_backend(spec, er_name, controller)
         cases = _validate_cases(cases, int(spec["trials"]))
-        if spec.get("actor", {}).get("name") == "openhands":
+        if spec["benchmark"].get("factory") is None and spec.get("actor", {}).get("name") == "openhands":
             if any(trial.get("trial_metadata", {}).get("actor_name") != "openhands"
                    for case in cases for trial in case["trials"]):
                 raise ValueError("The backend did not execute the requested OpenHands actor")
@@ -258,19 +258,9 @@ def _redact(message: str) -> str:
 
 def _partial_cases(output_dir: Path) -> list[dict[str, Any]]:
     """Keep readable native checkpoints after failure, without calling them complete."""
-    from vrlbench.backends import _case_rows
+    from vrlbench.simulation import _available_checkpoints
 
-    result = []
-    seen = set()
-    for path in sorted((output_dir / "reference").glob("**/episodes.json")):
-        try:
-            for case in _case_rows(path):
-                if case["case_id"] not in seen:
-                    result.append(case)
-                    seen.add(case["case_id"])
-        except (OSError, ValueError, TypeError, KeyError):
-            continue
-    return result
+    return _available_checkpoints(output_dir)
 
 
 def main(argv: list[str] | None = None) -> int:

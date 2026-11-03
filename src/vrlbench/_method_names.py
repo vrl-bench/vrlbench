@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Mapping
+
 
 # Public name: (stored reference execution key, additional load_method aliases).
 # Simulation accepts public names and execution keys, not presentation labels.
@@ -40,3 +42,15 @@ def reference_method_binding(name: str) -> tuple[str, str]:
 def is_reserved_memory_name(name: str) -> bool:
     """Keep reference aliases unavailable to custom factories, including DC-CU."""
     return canonical_method_name(name.replace("-", "_")) is not None
+
+
+def validate_method_params(name: str, params: Mapping[str, Any]) -> None:
+    """Reject unsupported reference options before starting an environment."""
+    allowed = {"max_tokens"} if canonical_method_name(name) == "reflexion" else set()
+    unknown = set(params) - allowed
+    if unknown:
+        raise ValueError(f"unknown {name} memory parameters: {sorted(unknown)}")
+    if "max_tokens" in params:
+        value = params["max_tokens"]
+        if type(value) is not int or value < 1:
+            raise ValueError("reflexion max_tokens must be a positive integer")

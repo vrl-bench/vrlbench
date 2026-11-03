@@ -39,14 +39,14 @@ def plan(spec: SimulationSpec) -> dict[str, Any]:
 def _validate_shared_source(spec: SimulationSpec) -> None:
     if spec.shared_t1_dir is None:
         return
-    if spec.actor.name == "openhands" or spec.workload.name in {"webarena", "osworld"}:
+    if spec.workload.factory is None:
         from ._shared_t1 import load_shared_first_trials
 
         load_shared_first_trials(spec.to_dict())
         return
     sdk_result = Path(spec.shared_t1_dir) / "evaluation.json"
     if not sdk_result.is_file():
-        return  # Original native sources are checked by the unchanged reference loader.
+        raise ValueError("shared_t1_dir must contain a completed SDK evaluation.json")
     baseline = SimulationResult.from_path(sdk_result).require_complete().to_dict().get("config", {})
     if baseline.get("memory", {}).get("name") != "retry" or baseline.get("memory", {}).get("factory") is not None:
         raise ValueError("shared_t1_dir must identify a completed memory-free Retry run")

@@ -15,13 +15,73 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from vrlbench.environments.interactive import (
-    Observation, TaskState, Transition, make_actor, run_cases,
+    Observation, TaskState, Transition, InteractiveActor, run_cases as _run_cases,
 )
 
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRskAAAAASUVORK5CYII="
 )
+
+
+class ScriptedActor(InteractiveActor):
+    """Deterministic test adapter for shared budgets, sessions and checkpoints."""
+
+    def __init__(self, *args, llm_fn=None, actor_params=None, model_config=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from vrlbench.runtime.llm import complete
+        self.llm_fn = complete if llm_fn is None else llm_fn
+        self.llm_usage_instrumented = llm_fn is None
+
+    def __call__(self) -> str:
+        # The loop binds memory immediately before calling the actor. A
+        # controller may have prepared the reset state earlier, without it.
+        if self.llm_usage_instrumented:
+            from vrlbench.runtime import llm
+            self.system_context, self.user_context = llm.get_context(), llm.get_user_context()
+        already_prepared = self.prepared is not None
+        prepared = self.prepare_trial()
+        if already_prepared:
+            self._checkpoint("reset")
+        assert self.prepared is not None and self.evidence is not None
+        observation = self.prepared.observation
+        history = f"Task: {prepared['task']}\nObservation:\n{prepared['initial_observation']}"
+        while self.ledger.remaining_steps:
+            prompt = (f"{history}\n\nEnvironment actions remaining: {self.ledger.remaining_steps}.\n"
+                      "Return exactly one action in the environment's action format.")
+            self.ledger.charge_actor_turn()
+            kwargs: dict[str, Any] = {"model": self.model, "system": self.session.system_prompt,
+                                      "max_tokens": 1024, "retry_on_error": False}
+            if observation.image is not None:
+                kwargs["images"] = [observation.image]
+            self.messages.append(f"[USER/action_prompt]\n{prompt}")
+            raw = self.llm_fn(prompt, **kwargs)
+            if not isinstance(raw, str):
+                raise TypeError("actor model must return text")
+            self.messages.append(f"[ASSISTANT/action]\n{raw}")
+            try:
+                action = self._action_from_response(raw)
+            except ValueError as exc:
+                feedback = self._reject_action(raw, str(exc))
+                history += f"\nRejected response: {raw}\n{feedback}"
+                continue
+            observation, text = self._dispatch_action(action, raw_response=raw)
+            history += f"\nAction: {action}\nObservation:\n{text}"
+            if self.close_reason != "running":
+                break
+        if self.close_reason == "running":
+            self._finish(terminated=False, truncated=True)
+        outcome = "SUCCESS" if self.success else "FAIL"
+        return f"{history}\nSTATUS: {outcome}\nClose reason: {self.close_reason}"
+
+
+def make_actor(*args, **kwargs):
+    return ScriptedActor(*args, **kwargs)
+
+
+def run_cases(*args, **kwargs):
+    kwargs.setdefault("actor_factory", ScriptedActor)
+    return _run_cases(*args, **kwargs)
 
 
 class FakeSession:
@@ -48,6 +108,10 @@ class FakeSession:
 
     def close(self):
         self.closed = True
+
+
+def create_session(*, case, params):
+    return FakeSession(done=True)
 
 
 def make_checkpoint_backend():

@@ -103,23 +103,6 @@ class Completion:
 def create_client():
     return SimpleNamespace(chat=SimpleNamespace(completions=Completion()))
 
-class Environment:
-    def __init__(self): self.resets = 0
-    def step(self, session, action):
-        if action == "reset":
-            self.resets += 1
-            return "Instruction: Buy synthetic sofa\\nAvailable actions: buy now", 0.0, False
-        return "Synthetic purchase outcome", 1.0 if self.resets >= 2 else 0.0, True
-class WebShopBackend:
-    def run(self, spec, runtime):
-        from vrlbench.environments import webshop
-        previous = webshop._load_default_env_factory
-        try:
-            webshop._load_default_env_factory = lambda: Environment
-            return runtime.run_reference()
-        finally:
-            webshop._load_default_env_factory = previous
-def create_webshop_backend(): return WebShopBackend()
 '''
 
 
@@ -128,6 +111,19 @@ class MethodConfigurationTests(unittest.TestCase):
         spec = SimulationSpec(WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
                               trials=3, max_environment_steps=15)
         self.assertEqual(spec.to_dict()["memory"], {"name": "retry", "factory": None})
+
+    def test_reference_memory_params_roundtrip_and_validation(self):
+        spec = SimulationSpec(WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
+                              MemorySpec("reflexion", params={"max_tokens": 1024}),
+                              trials=3, max_environment_steps=15, require_provider_usage=False)
+        restored = SimulationSpec.from_dict(spec.to_dict())
+        restored.validate()
+        self.assertEqual(restored.memory.params, {"max_tokens": 1024})
+        for params in ({"max_tokens": 0}, {"max_tokens": True}, {"max_token": 1024}):
+            with self.subTest(params=params), self.assertRaises(ValueError):
+                SimulationSpec(WorkloadSpec("webshop", [0]), ModelSpec("scripted"),
+                               MemorySpec("reflexion", params=params), trials=3,
+                               max_environment_steps=15, require_provider_usage=False).validate()
 
     def test_method_factory_json_resolution_and_mutual_exclusion(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -283,13 +279,10 @@ class WholeMethodWorkerTests(unittest.TestCase):
         from vrlbench.plugins import enable_reference_imports
 
         enable_reference_imports()
-        from vrlbench.environments import webshop
         from vrlbench.runtime import controllers, framework, loop
 
         before = (controllers.make_controller, framework.make_controller, framework._controller_name,
-                  webshop.make_controller, webshop._normalize_webshop_controller,
-                  loop.run_episode, loop.prepare_shared_t1, framework.run_episode,
-                  webshop.run_episode, webshop.prepare_shared_t1)
+                  loop.run_episode, loop.prepare_shared_t1, framework.run_episode)
         request = self.request()
         request["benchmark"]["name"] = "webshop"
         request["memory"]["method_factory"] = {"entrypoint": f"{self.plugin}:wrong_factory", "kwargs": {}}
@@ -297,9 +290,7 @@ class WholeMethodWorkerTests(unittest.TestCase):
             with memory_bindings(request) as (er, controller, _):
                 BackendRuntime(request, er, controller).make_controller()
         after = (controllers.make_controller, framework.make_controller, framework._controller_name,
-                 webshop.make_controller, webshop._normalize_webshop_controller,
-                 loop.run_episode, loop.prepare_shared_t1, framework.run_episode,
-                 webshop.run_episode, webshop.prepare_shared_t1)
+                 loop.run_episode, loop.prepare_shared_t1, framework.run_episode)
         self.assertEqual(before, after)
         self.assertEqual(_METHOD_FACTORIES, {})
 
@@ -327,85 +318,6 @@ class WholeMethodWorkerTests(unittest.TestCase):
             second = bridge.build_trial_context(trial_index=0)
             self.assertEqual(first, second)
         self.assertEqual(len([event for event in self.events() if event["kind"] == "context"]), 1)
-
-    def test_native_webshop_shared_first_trial_and_real_method_identity(self):
-        self.plugin.write_text(self.plugin.read_text().replace(
-            "class Environment:\n",
-            "class Environment:\n    _vrlbench_environment_identity = "
-            "{'benchmark': 'webshop', 'source_data_index_root_sha256': '" + "a" * 64 + "'}\n",
-        ))
-        baseline = self.request(cases=[0])
-        baseline["memory"] = {"name": "retry", "factory": None}
-        baseline["benchmark"] = {"name": "webshop", "cases": [0], "params": {},
-            "factory": {"entrypoint": f"{self.plugin}:create_webshop_backend", "kwargs": {}}}
-        baseline["model"]["transport"] = {"entrypoint": f"{self.plugin}:create_client", "kwargs": {}}
-        command, source = self.run_worker(baseline)
-        self.assertEqual(command.returncode, 0, source)
-        self.assertEqual(source["identity"]["environment"], {
-            "benchmark": "webshop", "source_data_index_root_sha256": "a" * 64,
-        })
-        # Native artifacts are sufficient for the original shared-T1 checks.
-        request = self.request(cases=[0])
-        request["benchmark"] = baseline["benchmark"]
-        request["model"] = baseline["model"]
-        request["shared_t1_dir"] = str(Path(baseline["output_dir"]) / "reference")
-        command, result = self.run_worker(request)
-        self.assertEqual(command.returncode, 0, result)
-        self.assertEqual(result["identity"]["environment"], source["identity"]["environment"])
-        case = result["cases"][0]
-        self.assertEqual(case["trials"][0]["policy_trajectory"], source["cases"][0]["trials"][0]["policy_trajectory"])
-        self.assertEqual(case["trials"][1]["system_context"], RAW_CONTEXT)
-        self.assertTrue(case["trials"][-1]["success"])
-        native = json.loads((Path(request["output_dir"]) / "reference" / "results.json").read_text())
-        self.assertEqual(native["controller"], "community_joint_method")
-        self.assertNotEqual(native["controller"], "dsst")
-        reset = next(row for row in self.events() if row["kind"] == "reset")
-        self.assertEqual(reset["config"]["metadata"]["benchmark"], "webshop")
-        self.assertEqual(reset["config"]["metadata"]["sample_index"], 0)
-        self.assertEqual(reset["config"]["metadata"]["max_environment_steps"], request["max_environment_steps"])
-        self.assertEqual(reset["config"]["metadata"]["shared_t1_trial_metadata"],
-                         source["cases"][0]["trials"][0]["trial_metadata"])
-        self.assertEqual(reset["config"]["metadata"]["shared_t1_llm_usage"],
-                         source["cases"][0]["trials"][0]["llm_usage"])
-
-    def test_native_shared_terminal_failure_notifies_method_once(self):
-        baseline = self.request(total=1, cases=[0])
-        baseline["memory"] = {"name": "retry", "factory": None}
-        baseline["benchmark"] = {"name": "webshop", "cases": [0], "params": {},
-            "factory": {"entrypoint": f"{self.plugin}:create_webshop_backend", "kwargs": {}}}
-        baseline["model"]["transport"] = {"entrypoint": f"{self.plugin}:create_client", "kwargs": {}}
-        command, source = self.run_worker(baseline)
-        self.assertEqual(command.returncode, 0, source)
-
-        request = self.request(total=1, cases=[0])
-        request["benchmark"] = baseline["benchmark"]
-        request["model"] = baseline["model"]
-        request["shared_t1_dir"] = str(Path(baseline["output_dir"]) / "reference")
-        command, result = self.run_worker(request)
-        self.assertEqual(command.returncode, 0, result)
-        trial = result["cases"][0]["trials"][0]
-        records = [row["record"] for row in self.events() if row["kind"] == "observe"]
-        self.assertEqual(len(records), 1)
-        self.assertEqual(records[0]["trial_index"], 0)
-        self.assertEqual(records[0]["trajectory"], source["cases"][0]["trials"][0]["policy_trajectory"])
-        self.assertEqual(records[0]["actor_trajectory"], trial["actor_trajectory"])
-        self.assertTrue(records[0]["metadata"]["policy_evidence_eligible"])
-        self.assertFalse(records[0]["metadata"]["has_future_trial"])
-
-    def test_native_webshop_fresh_case_receives_metadata_and_verbatim_context(self):
-        request = self.request(cases=[0])
-        request["benchmark"] = {"name": "webshop", "cases": [0], "params": {},
-            "factory": {"entrypoint": f"{self.plugin}:create_webshop_backend", "kwargs": {}}}
-        request["model"]["transport"] = {"entrypoint": f"{self.plugin}:create_client", "kwargs": {}}
-        command, result = self.run_worker(request)
-        self.assertEqual(command.returncode, 0, result)
-        first, second = result["cases"][0]["trials"]
-        self.assertEqual(first["system_context"], "")
-        self.assertEqual(second["system_context"], RAW_CONTEXT)
-        reset = next(row for row in self.events() if row["kind"] == "reset")
-        self.assertEqual(reset["config"]["metadata"]["benchmark"], "webshop")
-        self.assertEqual(reset["config"]["metadata"]["sample_index"], 0)
-        self.assertEqual(reset["config"]["environment_rules"], reset["config"]["metadata"]["basic_environment_rules"])
 
 
 if __name__ == "__main__":

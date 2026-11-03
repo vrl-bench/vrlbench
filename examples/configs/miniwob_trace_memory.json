@@ -1,0 +1,39 @@
+{
+  "workload": {
+    "name": "miniwob",
+    "cases": [
+      {
+        "task": "click-test",
+        "episode": 0
+      }
+    ],
+    "params": {
+      "headless": true,
+      "trial_seed_mode": "paired_trial",
+      "capture_observations": true
+    }
+  },
+  "memory": {
+    "name": "recent_failure_traces",
+    "factory": {
+      "entrypoint": "../memory_strategy/initial_strategy.py:create_memory"
+    }
+  },
+  "model": {
+    "name": "YOUR_MODEL_NAME",
+    "api_key_env": "OPENAI_API_KEY",
+    "request_options": {}
+  },
+  "trials": 6,
+  "max_environment_steps": 128,
+  "require_provider_usage": true,
+  "shared_t1_dir": "../../runs/miniwob_retry",
+  "timeout_seconds": 600,
+  "output_dir": "../../runs/miniwob_trace_memory",
+  "actor": {
+    "name": "openhands",
+    "params": {
+      "max_output_tokens": 1024
+    }
+  }
+}

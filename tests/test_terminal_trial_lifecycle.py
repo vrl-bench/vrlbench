@@ -168,6 +168,39 @@ class TerminalTrialLifecycle(unittest.TestCase):
                 self.assertFalse(method.records[0].metadata["has_future_trial"])
                 self.assertEqual(slot.writes, [])
 
+    def test_actor_usage_excludes_scheduler_and_memory_calls(self):
+        from vrlbench.runtime.budget import TokenUsageLedger
+        ledger = TokenUsageLedger()
+
+        class Actor(self.Actor):
+            def __call__(self):
+                ledger.record_response({"total_tokens": 2})
+                return super().__call__()
+
+        class Slot(self.Slot):
+            def on_trial_end(self, trajectory, **kwargs):
+                ledger.record_response({"total_tokens": 4})
+                super().on_trial_end(trajectory, **kwargs)
+
+        class Controller(self.Controller):
+            def build_trial_context(self, **kwargs):
+                ledger.record_response({"total_tokens": 1})
+                return super().build_trial_context(**kwargs)
+
+        controller = Controller(self.Method(), name="probe", model="offline", native_rules=False)
+        result = self.loop.run_episode(
+            Actor([True, True]), lambda trace: False, Slot(), "offline",
+            total_trials=2, controller=controller, token_ledger=ledger,
+            metadata={"benchmark": "custom"},
+        )
+        first = result.trials[0]
+        self.assertEqual(first.trial_metadata["actor_llm_usage"]["api_calls"], 1)
+        self.assertEqual(first.trial_metadata["actor_llm_usage"]["total_tokens"], 2)
+        self.assertEqual(first.llm_usage["api_calls"], 3)
+        self.assertEqual(first.llm_usage["total_tokens"], 7)
+        self.assertEqual(result.resource_usage["api_calls"], 5)
+        self.assertEqual(result.resource_usage["total_tokens"], 10)
+
     def test_optional_close_hooks_preserve_legacy_controller_compatibility(self):
         from vrlbench.runtime.controllers.base import ControllerContext
 

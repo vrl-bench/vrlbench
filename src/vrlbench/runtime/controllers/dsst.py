@@ -5,21 +5,14 @@ from typing import Any, Sequence
 from vrlbench.runtime.controllers.base import ControllerContext
 import vrlbench.runtime.llm as _llm
 import vrlbench.runtime.prompts as P
-from vrlbench.runtime.trajectory import parse_policy_trajectory
-DSST_AO_FOREST_ENCODING = 'ordered_raw_canonical_policy_ao_trace'
+from vrlbench.runtime.trajectory import parse_policy_trajectory, serialize_policy_history
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 def serialize_dsst_ao_forest(rows: Sequence[dict[str, Any]]) -> dict[str, object]:
-    """Pass the ordered canonical A-O traces to the scheduler unchanged."""
-    attempts: list[dict[str, object]] = []
-    for row in rows:
-        trace = str(row['ao_trace'])
-        if parse_policy_trajectory(trace) is None:
-            raise ValueError('formal DSST requires the canonical policy A-O trace')
-        attempts.append({'attempt': int(row['trial']) + 1, 'canonical_policy_ao_trace': trace})
-    return {'encoding': DSST_AO_FOREST_ENCODING, 'attempts': attempts}
+    """Keep the complete ordered history, sharing exact observations."""
+    return serialize_policy_history(rows)
 
 class DSSTController:
     """Implement the decision-space search controller: collect the ordered
@@ -98,7 +91,9 @@ class DSSTController:
         payload = {'task_or_task_family_scope': self.task_scope, 'basic_environment_rules': self.basic_environment_rules, 'remaining_complete_attempts': remaining, 'complete_ordered_failure_only_ao_forest': serialize_dsst_ao_forest(self.failure_ao_forest)}
         user_input = json.dumps(payload, ensure_ascii=False, indent=2)
         raw = str(_llm.complete(user_input, model=model, system=P.DSST_ICL_PROMPT, max_tokens=P.DSST_MAX_TOKENS) or '')
-        self.joint_output = {'method': 'single_llm_joint_induction_and_allocation', 'for_trial': trial, 'after_failure_trial': trial - 1, 'remaining_complete_attempts': remaining, 'raw': raw}
+        self.joint_output = {'method': 'single_llm_joint_induction_and_allocation', 'for_trial': trial, 'after_failure_trial': trial - 1, 'remaining_complete_attempts': remaining, 'raw': raw,
+                             'input_encoding': payload['complete_ordered_failure_only_ao_forest']['encoding'],
+                             'input_sha256': _sha256(user_input)}
         self.last_update_for_trial = trial
 
     def on_failure(self, trajectory: str, model: str, *, er_name: str='', er_section: str='', trial_index: int | None=None) -> None:

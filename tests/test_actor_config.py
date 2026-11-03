@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from vrlbench import (ActorSpec, FactorySpec, MemorySpec, ModelSpec, SimulationSpec,
-                      WorkloadSpec, aggregate_cases, compare_results, evaluate_candidate, plan)
+                      WorkloadSpec, aggregate_cases, compare_results, evaluate_candidate, plan, simulate)
 from vrlbench.results import SimulationResult
 
 
@@ -33,13 +33,32 @@ def recorded(configuration):
 
 
 class ActorConfiguration(unittest.TestCase):
-    def test_default_react_wire_and_derived_memory_configuration_remain_compatible(self):
+    def test_custom_actor_factory_runs_without_loading_openhands(self):
+        fixture = ROOT / "tests/test_interactive.py"
+        with tempfile.TemporaryDirectory() as directory:
+            configured = SimulationSpec(
+                WorkloadSpec("miniwob", [{"task": "click-test", "episode": 0}], params={
+                    "session_factory": {"entrypoint": f"{fixture}:create_session"}}),
+                ModelSpec("fixture", transport=FactorySpec(f"{fixture}:make_checkpoint_transport")),
+                actor=ActorSpec("scripted", factory=FactorySpec(f"{fixture}:ScriptedActor")),
+                trials=2, max_environment_steps=2, output_dir=directory,
+            )
+            result = simulate(configured).require_complete()
+            self.assertEqual(len(result.cases[0]["trials"]), 2)
+            self.assertEqual(result.resources["api_calls"], 2)
+            identity = next(row for row in result.to_dict()["identity"]["plugins"]
+                            if row["role"] == "actor")
+            self.assertEqual(identity["name"], "scripted")
+            self.assertEqual(len(identity["source_sha256"]), 64)
+
+    def test_default_openhands_is_recorded_and_retired_actor_is_not_executed(self):
         original = spec().to_dict()
-        self.assertNotIn("actor", original)
+        self.assertEqual(original["actor"], {"name": "openhands", "params": {}})
         self.assertEqual(SimulationSpec.from_dict(original).actor, ActorSpec())
         explicit = deepcopy(original)
         explicit["actor"] = {"name": "react", "params": {}}
-        self.assertEqual(SimulationSpec.from_dict(explicit).to_dict(), original)
+        with self.assertRaisesRegex(ValueError, "actor.factory"):
+            SimulationSpec.from_dict(explicit).validate()
         selected = spec(actor=ActorSpec("openhands", {"max_output_tokens": 512}))
         changed_memory = replace(selected, memory=MemorySpec("reflexion"))
         self.assertEqual(SimulationSpec.from_dict(changed_memory.to_dict()).actor, selected.actor)
@@ -63,8 +82,7 @@ class ActorConfiguration(unittest.TestCase):
             value = plan(resolved)["config"]
             self.assertEqual(value["actor"]["params"]["condenser"]["entrypoint"], f"{root / 'condenser.py'}:create")
             self.assertEqual(value["benchmark"]["params"]["environment_python"], str(root / "environment/bin/python"))
-            with self.assertRaisesRegex(ValueError, "only supported"):
-                replace(resolved, actor=ActorSpec()).validate()
+            replace(resolved, actor=ActorSpec()).validate()
             with self.assertRaisesRegex(ValueError, "max_total_tokens"):
                 replace(resolved, max_total_tokens=100).validate()
             with self.assertRaisesRegex(ValueError, "model.transport"):
@@ -99,8 +117,9 @@ class ActorConfiguration(unittest.TestCase):
                 session.close()
 
     def test_comparison_and_parent_preflight_require_the_same_actor(self):
-        previous = recorded(spec())  # Older records contain no actor key.
-        explicit = previous.to_dict()
+        previous = recorded(spec()).to_dict()
+        previous["config"].pop("actor")  # Older records contain no actor key.
+        explicit = deepcopy(previous)
         explicit["config"]["actor"] = {"name": "react", "params": {}}
         compare_results([previous, explicit])
         different = recorded(spec(actor=ActorSpec("openhands")))
@@ -114,7 +133,7 @@ class ActorConfiguration(unittest.TestCase):
             candidate.write_text("raise AssertionError('incompatible candidate must not be imported')\n")
             with self.assertRaisesRegex(ValueError, "incompatible"):
                 evaluate_candidate(candidate, spec(actor=ActorSpec("openhands"),
-                    output_dir=str(root / "never-created")), reference=previous)
+                    output_dir=str(root / "never-created")), reference=SimulationResult(previous))
             self.assertFalse((root / "never-created").exists())
 
     def test_shared_native_case_ids_and_actor_mismatch_are_checked_without_execution(self):

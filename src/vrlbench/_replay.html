@@ -13,6 +13,7 @@
 @media(max-width:850px){.workspace{grid-template-columns:150px minmax(0,1fr)}.right-panel{grid-column:2;border-left:0;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr}.panel-section{border-right:1px solid var(--line)}.main{padding-bottom:25px}.timeline{grid-row:1/3}.header-title{display:none}.app-header{padding:0 18px}.toolbar{padding:15px 18px}.observation{max-height:560px}.task-heading h1{font-size:19px}}
 @media(max-width:600px){body{font-size:15px}.app-header{height:58px}.read-only{font-size:11px}.brand{font-size:18px}.brand-mark{transform:none}.toolbar{grid-template-columns:1fr;gap:12px}.run-meta{grid-column:auto}.workspace{display:block}.timeline{padding:12px 14px;border-right:0;border-bottom:1px solid var(--line);max-height:190px;overflow:auto}.timeline-title{padding-bottom:5px}.trial-block{margin-bottom:6px}.step-list{display:flex;gap:4px;overflow-x:auto;margin:2px 0;padding:3px 0;border:0}.trial-heading{padding:4px 8px;min-height:32px}.step-item{width:auto;max-width:180px;flex-shrink:0;min-height:34px}.step-item .step-label{max-width:120px}.main{padding:20px 14px}.right-panel{display:block}.panel-section{border-right:0;padding:20px}.stage-head{flex-wrap:wrap;padding:10px 12px}.stage-title{font-size:13px}.observation pre{padding:17px;font-size:12px;line-height:1.7}.observation{min-height:260px}.phase-toggle button{font-size:11px;padding:4px 9px}.task-heading h1{font-size:18px}.controls{gap:6px}.controls button{padding:8px 10px}.controls .spacer{display:none}.shortcut{display:none}.memory-text{font-size:13px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.recorded-text-links{display:block;white-space:normal;color:var(--muted)}.recorded-text-links a{display:inline-block;color:var(--blue);margin-right:16px;padding:3px 0}.recorded-text-links a:focus-visible{outline:3px solid #63b3ed;outline-offset:3px}
 </style>
 </head>
 <body>
@@ -61,6 +62,28 @@
   const recorded = value => isKnown(value) ? (value === "" ? "Empty (recorded)" : text(value)) : "Not recorded";
   const short = (value,length=53) => {const s=String(value || "").replace(/\s+/g," ");return s.length>length?s.slice(0,length-1)+"…":s;};
   const node = (tag,cls,content) => {const el=document.createElement(tag);if(cls)el.className=cls;if(content!==undefined)el.textContent=content;return el;};
+  function validatedTextAsset(value){
+    if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==1||typeof value.text_ref!=='string'||!/^[a-f0-9]{64}$/.test(value.text_ref))return null;
+    const ref=value.text_ref,table=data.external_texts;
+    if(!table||typeof table!=='object'||Array.isArray(table)||!Object.prototype.hasOwnProperty.call(table,ref))return null;
+    const asset=table[ref];
+    if(!asset||typeof asset!=='object'||asset.sha256!==ref||!Number.isSafeInteger(asset.bytes)||asset.bytes<0||!['text','json'].includes(asset.format)||typeof asset.url!=='string')return null;
+    const match=/^((?:[A-Za-z0-9_.~-]|%[0-9A-F]{2})+\.assets)\/([a-f0-9]{64})\.(txt|json)$/.exec(asset.url);
+    if(!match||match[0]!==asset.url||match[2]!==ref||match[3]!== (asset.format==='text'?'txt':'json'))return null;
+    try{if(/[\/\\\u0000-\u001f\u007f]/.test(decodeURIComponent(match[1])))return null;}catch{return null;}
+    return asset;
+  }
+  function renderRecorded(container,value,label){
+    container.replaceChildren();const asset=validatedTextAsset(value);
+    if(!asset){container.textContent=recorded(value);return container;}
+    const size=asset.bytes>=1048576?(asset.bytes/1048576).toFixed(1)+' MiB':asset.bytes>=1024?(asset.bytes/1024).toFixed(1)+' KiB':asset.bytes+' bytes';
+    const format=asset.format==='text'?'TXT':'JSON',wrap=node('span','recorded-text-links');
+    wrap.appendChild(node('span','','Full recorded text saved separately · '+size+' · '+format+'.'));
+    wrap.appendChild(node('br'));
+    const open=node('a','','Open full recorded text');open.href=asset.url;open.target='_blank';open.rel='noopener noreferrer';open.title='View '+label+' in a new tab';open.setAttribute('aria-label','Open full recorded text for '+label+' ('+format+', '+size+'; opens in a new tab)');
+    const download=node('a','','Download');download.href=asset.url;download.download=value.text_ref+(asset.format==='text'?'.txt':'.json');download.title='Download '+label;download.setAttribute('aria-label','Download full recorded text for '+label+' ('+format+', '+size+')');
+    wrap.append(open,download);container.appendChild(wrap);return container;
+  }
   const currentRun = () => data.runs[state.run];
   const currentCase = () => currentRun().cases[state.case];
   const currentTrial = () => currentCase().trials[state.trial];
@@ -100,17 +123,18 @@
   function renderObservation(frame){
     const container=$('observation');container.replaceChildren();
     const prefix=state.after?'after':'before';const observation=frame[prefix+'_observation'];const image=frame[prefix+'_image'];const html=frame[prefix+'_html'];
+    const observationLabel=frame.observation_only?'initial environment observation':'environment observation '+prefix+' action';
     const assetMatch=typeof image==='string'?/^((?:[A-Za-z0-9_.~-]|%[0-9A-F]{2})+\.assets)\/[a-f0-9]{64}\.(png|jpg)$/.exec(image):null;
     let recordedAsset=false;
     if(assetMatch){try{recordedAsset=!/[\/\\]/.test(decodeURIComponent(assetMatch[1]));}catch{}}
     if(typeof image==='string'&&(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/.test(image)||recordedAsset)){
       const img=document.createElement('img');img.src=image;img.alt=frame.observation_only?'Recorded initial environment screenshot':isRejected(frame)?'Unchanged recorded environment screenshot at rejected actor response':'Recorded environment screenshot '+(state.after?'after':'before')+' action '+(frame.step_index+1);container.appendChild(img);$('observation-mode').textContent='Recorded screenshot';$('capture-note').textContent='Saved environment image at this replay position.';
-      if(isKnown(observation)){const details=node('details','details');details.style.margin='0';details.style.padding='10px 16px';const summary=node('summary','','Recorded observation text');details.append(summary,node('pre','',recorded(observation)));container.appendChild(details);}
+      if(isKnown(observation)){const details=node('details','details');details.style.margin='0';details.style.padding='10px 16px';const summary=node('summary','','Recorded observation text');details.append(summary,renderRecorded(node('pre'),observation,observationLabel));container.appendChild(details);}
     }else if(typeof html==='string'&&html){
       const iframe=document.createElement('iframe');iframe.setAttribute('sandbox','');iframe.setAttribute('referrerpolicy','no-referrer');iframe.title='Recorded environment HTML';iframe.srcdoc='<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; base-uri \'none\'; form-action \'none\'">'+html;container.appendChild(iframe);$('observation-mode').textContent='Recorded HTML snapshot';$('capture-note').textContent='Saved HTML rendered in an isolated, noninteractive frame. It is not a live page.';
-      if(isKnown(observation)){const details=node('details','details');details.style.margin='0';details.style.padding='10px 16px';const summary=node('summary','','Recorded observation text');details.append(summary,node('pre','',recorded(observation)));container.appendChild(details);}
+      if(isKnown(observation)){const details=node('details','details');details.style.margin='0';details.style.padding='10px 16px';const summary=node('summary','','Recorded observation text');details.append(summary,renderRecorded(node('pre'),observation,observationLabel));container.appendChild(details);}
     }else{
-      container.appendChild(node('pre','',recorded(observation)));$('observation-mode').textContent='Recorded text observation';$('capture-note').textContent='No screenshot was recorded for this position. Showing the saved observation, not a reconstructed page.';
+      container.appendChild(renderRecorded(node('pre'),observation,observationLabel));$('observation-mode').textContent='Recorded text observation';$('capture-note').textContent='No screenshot was recorded for this position. Showing the saved observation, not a reconstructed page.';
     }
     const notice=frame[prefix+'_snapshot_notice'];if(typeof notice==='string'&&notice.trim())$('capture-note').textContent+=' '+notice;
     if(isRejected(frame))$('capture-note').textContent+=' Environment not executed; both positions use the same saved observation.';
@@ -131,8 +155,8 @@
     const hasControllerState=isKnown(memory.controller_state_pre)||isKnown(memory.controller_state);
     $('memory-state-caption').textContent=hasMemoryState?'Memory system state':hasControllerState?'Controller / scheduler state':'Internal memory state';
     $('memory-state-description').textContent=hasMemoryState?'Recorded memory-system snapshot before this trial.':hasControllerState?'Recorded controller / scheduler snapshot, not the memory method’s internal storage.':'No internal memory snapshot was recorded. The context above is the actual exposed memory.';
-    $('memory-state-pre').textContent=recorded(hasMemoryState?memory.state_pre:memory.controller_state_pre);
-    $('memory-state-after-wrap').hidden=!isFinal;$('memory-state-after').textContent=recorded(hasMemoryState?memory.state_after:memory.controller_state);
+    renderRecorded($('memory-state-pre'),hasMemoryState?memory.state_pre:memory.controller_state_pre,'internal state before trial');
+    $('memory-state-after-wrap').hidden=!isFinal;renderRecorded($('memory-state-after'),hasMemoryState?memory.state_after:memory.controller_state,'internal state after trial');
   }
   function addState(label,value){const row=node('div','state-row');row.append(node('dt','',label),node('dd','',value));$('evaluation-state').appendChild(row);}
   function renderTrialBudget(run,trial){
@@ -179,7 +203,7 @@
     $('task-title').textContent=task.task||task.case_id;$('method-tag').textContent=typeof run.method==='string'?run.method:recorded(run.method);$('model-label').textContent=typeof run.model==='string'?run.model:run.model&&run.model.name?run.model.name:'Model not recorded';$('run-status').textContent='Run '+(run.status||'status unknown');
     $('frame-note').textContent=typeof run.recording_notice==='string'&&run.recording_notice.trim()?run.recording_notice:'Replay reads saved observations and actions. It does not run the agent again.';
     if(trial&&trial.incomplete&&partialInterrupted(run,trial))$('frame-note').textContent+=' Run '+run.status+' · last saved checkpoint.';
-    $('raw-actor-record').textContent=recorded(trial&&trial.raw_actor_trajectory);
+    renderRecorded($('raw-actor-record'),trial&&trial.raw_actor_trajectory,'raw actor record');
     renderTimeline();
     if(!trial||!trial.frames.length){
       state.after=false;
@@ -211,7 +235,9 @@
     $('position-label').textContent='Trial '+trial.trial_number+' · '+(hasRejections?'Event ':'Action ')+(state.step+1)+' of '+trial.frames.length;
     $('action-heading').textContent=rejected?'Rejected actor response':'Selected action';$('feedback-heading').textContent=rejected?'Response rejection':'Environment feedback';
     $('phase-act').textContent=rejected?'Response':'Act';$('phase-feedback').textContent=rejected?'Rejected':'Feedback';
-    renderObservation(frame);$('action-code').textContent=rejected?recorded(frame.raw_response):frame.action||'Not recorded';$('step-kind').textContent=isPending(frame)?'Selected action · feedback missing':rejected?'Rejected actor response · no environment action':'Executed environment action';$('feedback-text').textContent=isPending(frame)?'Environment feedback was not recorded. Environment execution and result are unconfirmed; no after-action image is available.':rejected?(state.after?'Environment not executed. Action budget charged: 1. Observation unchanged.\nReason: '+recorded(frame.reason):'This response was rejected before environment execution. Select “After rejection” to inspect the recorded reason and budget charge.'):(state.after?recorded(frame.after_observation):'Select “After action” to inspect the recorded environment feedback.');
+    renderObservation(frame);$('action-code').textContent=rejected?recorded(frame.raw_response):frame.action||'Not recorded';$('step-kind').textContent=isPending(frame)?'Selected action · feedback missing':rejected?'Rejected actor response · no environment action':'Executed environment action';
+    const feedback=isPending(frame)?'Environment feedback was not recorded. Environment execution and result are unconfirmed; no after-action image is available.':rejected?(state.after?'Environment not executed. Action budget charged: 1. Observation unchanged.\nReason: '+recorded(frame.reason):'This response was rejected before environment execution. Select “After rejection” to inspect the recorded reason and budget charge.'):(state.after?frame.after_observation:'Select “After action” to inspect the recorded environment feedback.');
+    renderRecorded($('feedback-text'),feedback,'environment feedback');
     renderMemory(trial,isFinal&&!trial.incomplete);renderEvaluation(run,trial,frame,isFinal);
     const all=positions(),index=positionIndex(all);$('previous').disabled=index<=0;$('next').disabled=index>=all.length-1;$('progress').max=String(Math.max(0,all.length-1));$('progress').value=String(Math.max(0,index));$('progress').setAttribute('aria-valuetext','Trial '+trial.trial_number+', event '+(state.step+1)+', '+(state.after?'after':'before')+(rejected?' response rejection':' action execution'));$('progress-label').textContent=(index+1)+' / '+all.length;
     $('play').textContent=state.playing?'Pause':'Play';
@@ -241,7 +267,7 @@
     $('previous').addEventListener('click',()=>{stop();advance(-1);});$('next').addEventListener('click',()=>{stop();advance(1);});$('play').addEventListener('click',togglePlay);
     $('progress').addEventListener('input',e=>{stop();selectPosition(Number(e.target.value));});
     $('speed').addEventListener('change',()=>{if(state.playing){clearTimeout(state.timer);state.timer=setTimeout(tick,Number($('speed').value));}});
-    document.addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea,button,summary')||e.altKey||e.ctrlKey||e.metaKey)return;if(e.key==='ArrowLeft'){e.preventDefault();stop();advance(-1);}else if(e.key==='ArrowRight'){e.preventDefault();stop();advance(1);}else if(e.code==='Space'){e.preventDefault();togglePlay();}});
+    document.addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea,button,summary,a')||e.altKey||e.ctrlKey||e.metaKey)return;if(e.key==='ArrowLeft'){e.preventDefault();stop();advance(-1);}else if(e.key==='ArrowRight'){e.preventDefault();stop();advance(1);}else if(e.code==='Space'){e.preventDefault();togglePlay();}});
     document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});
   }catch(error){$('app').hidden=true;$('error').hidden=false;$('error').textContent='Could not open this replay: '+error.message;}
 })();

@@ -4,6 +4,9 @@
 
 Choose an interactive environment, model, and memory system, then use one workflow:
 `simulate` → `inspect` → `compare` → revise the memory implementation.
+Built-in environments share the OpenHands actor. Run the simulator in Python
+3.12+; an environment with older dependencies can run in its own interpreter
+through `workload.params.environment_python`.
 Set `trials` and `max_environment_steps` explicitly in every simulation
 configuration. Both must be positive integers; neither has a default.
 
@@ -16,26 +19,121 @@ configuration. Both must be positive integers; neither has a default.
 - **[Your tasks](DEVELOPMENT.md#add-a-task-environment):** connect a workload
   adapter while retaining the same memory and analysis interfaces.
 
-The worked example below compares memory-free Retry, recent failure traces,
-and Reflexion on WebShop. Inspect how memory changes later actions, compare
-task outcomes, then improve your own memory system and reuse it in your agent.
+Start with MiniWoB to run a real browser task without a product catalog,
+search index, self-hosted website, or VM. WebShop provides a longer comparison
+walkthrough below; WebArena and OSWorld use the same simulation commands after
+their native environments are prepared. Model calls may incur API charges;
+replaying saved results does not call a model.
 
-This walkthrough executes real task environments and hosted models, so model
-calls may incur API charges. [MiniWoB setup](#use-miniwob) and optional
-[offline interface checks](#optional-offline-interface-checks) are also provided.
+Keep benchmark downloads under `external/` and evaluation outputs under
+`runs/`; neither belongs in version control. Run commands from the repository
+root. The SDK does not download benchmark assets or browser binaries.
 
-## 1. Install the simulator
+<a id="miniwob"></a>
 
-The SDK supports Python 3.10+. This WebShop walkthrough uses Python 3.10 and
-Java 11 on a Linux execution host. MiniWoB uses a separate Python 3.12 environment.
+## Use MiniWoB
+
+Use Linux, Python 3.12, Chromium or Chrome, and a
+[compatible ChromeDriver](https://developer.chrome.com/docs/chromedriver/downloads/version-selection).
+Install the locked Python dependencies in
+[`miniwob-py312.lock.txt`](../src/vrlbench/requirements/miniwob-py312.lock.txt)
+and prepare the browser and driver binaries separately. Model inference uses
+a hosted API; no local model weights or GPU are needed.
+
+Clone the repository and prepare a dedicated environment. If you already have
+the checkout, start from its root and deactivate any other virtual environment:
+
+```bash
+git clone https://github.com/vrl-bench/vrlbench.git
+cd vrlbench
+export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
+python3.12 -m venv .venv-miniwob
+. .venv-miniwob/bin/activate
+python -m pip install -r src/vrlbench/requirements/miniwob-py312.lock.txt
+python -m pip install -e '.[runtime,openhands]'
+
+mkdir -p external
+git clone https://github.com/ltzheng/Synapse.git external/Synapse
+git -C external/Synapse checkout 89dbbf8f617fdfb6d97b27324719db95da6ccdff
+for name in action.py environment.py instance.py; do
+  cp "src/vrlbench/environments/synapse_overlay/synapse/envs/miniwob/$name" \
+    "external/Synapse/synapse/envs/miniwob/$name"
+done
+export SYNAPSE_ROOT="$PWD/external/Synapse"
+export SE_CHROME=/absolute/path/to/chrome
+export SE_CHROMEDRIVER=/absolute/path/to/chromedriver
+```
+
+Replace the browser paths with your installed binaries. The adapter checks the
+Synapse base commit and all three overlaid files; keep those files unchanged
+after setup. MiniWoB HTML tasks load from that checkout. Set `SYNAPSE_ROOT` in
+the shell used for runs.
+
+### Run a comparison and replay it
+
+Set the same model in these three configurations, replacing `YOUR_MODEL_NAME`.
+For a nondefault endpoint, set `model.base_url` explicitly; keep credentials in
+the shell variable named by `model.api_key_env`, not in a configuration file.
+See [model options](DEVELOPMENT.md#use-another-model-or-transport).
+
+| Condition | Configuration |
+|---|---|
+| Memory-free Retry | [`miniwob_retry.json`](../examples/configs/miniwob_retry.json) |
+| Recent failure traces | [`miniwob_trace_memory.json`](../examples/configs/miniwob_trace_memory.json) |
+| Reflexion | [`miniwob_reflexion.json`](../examples/configs/miniwob_reflexion.json) |
+
+The examples select the same `click-test` case, with explicit limits of six
+trials and 128 action opportunities per trial. Page recording is enabled in
+all three configurations, so the first run already saves native screenshots.
+Both memory conditions reuse Retry's actual first trial. Run Retry to completion
+before starting them:
+
+```bash
+export OPENAI_API_KEY=your-api-key
+vrlbench simulate --config examples/configs/miniwob_retry.json --plan
+vrlbench simulate --config examples/configs/miniwob_retry.json
+vrlbench simulate --config examples/configs/miniwob_trace_memory.json
+vrlbench simulate --config examples/configs/miniwob_reflexion.json
+vrlbench inspect runs/miniwob_reflexion
+vrlbench replay runs/miniwob_retry runs/miniwob_trace_memory runs/miniwob_reflexion \
+  --output runs/miniwob-replay.html
+vrlbench compare runs/miniwob_retry runs/miniwob_trace_memory runs/miniwob_reflexion
+```
+
+Open `runs/miniwob-replay.html` to step through the recorded pages, actions,
+memory, and budgets. `--plan` checks the declaration without starting an
+environment or calling a model; a completed simulation reports `status: complete`.
+Use new output directories when rerunning a comparison.
+
+The task may succeed on its first trial, in which case all conditions stop
+without generating memory. For memory experiments, select a broader set of
+tasks and episodes in all three configurations. Keep the model, cases, reset
+rules, budgets, and recording settings matched, and generate a new Retry source
+after changing them.
+
+To try your own implementation, continue with
+[Bring your own memory](DEVELOPMENT.md#bring-your-own-memory): keep the same
+configuration and commands, replacing only the memory binding and run paths.
+
+## Use WebShop
+
+This walkthrough compares Retry, recent failure traces, and Reflexion on two
+shopping goals. Preparing the environment requires the full product catalog
+and a search index even when you select only a few goals.
+
+### 1. Install the simulator
+
+Use Python 3.12+ for OpenHands and Python 3.10 with Java 11 for the WebShop
+environment. The simulator connects to that environment through a subprocess.
 Model inference uses hosted APIs; no local model weights or GPU are required.
 
 ```bash
 git clone https://github.com/vrl-bench/vrlbench.git
 cd vrlbench
-python3.10 -m venv .venv-webshop
-. .venv-webshop/bin/activate
-python -m pip install -e '.[runtime]'
+python3.12 -m venv .venv-simulator
+. .venv-simulator/bin/activate
+python -m pip install -e '.[runtime,openhands]'
 vrlbench --help
 ```
 
@@ -47,7 +145,7 @@ The `runtime` extra does not install benchmark assets or browsers.
 <a id="webshop-setup"></a>
 <a id="webshop"></a>
 
-## 2. Prepare WebShop
+### 2. Prepare WebShop
 
 Run the following commands from the repository root. Keep benchmark downloads
 under `external/` and evaluation outputs under `runs/`; neither belongs in
@@ -61,6 +159,9 @@ Ensure `java -version` reports Java 11 in the active shell. WebShop also needs
 `git`, `curl`, and the native runtime libraries checked by its setup script.
 
 ```bash
+python3.10 -m venv .venv-webshop
+. .venv-webshop/bin/activate
+python -m pip install -e '.[runtime]'
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
 ```
@@ -73,9 +174,21 @@ export WEBSHOP_ROOT="$PWD/external/WebShop"
 The script installs the locked Python dependencies, checks out WebShop commit
 `64fa2a5c15c7daa698b9ac93f5bb5437b634c9bd`, downloads and verifies the product
 and human-goal files, and builds the complete search index. The catalog contains
-1,181,430 products; allow for substantial downloads and disk use. Setup refuses
-conflicting tracked changes or an unmarked existing index rather than replacing
-them silently.
+1,181,430 products. Allow about 20 GiB for the catalog, converted documents,
+and index, plus space for Python dependencies and run outputs. Download and
+indexing time depend on the network and host; both finish before model calls
+begin. Setup refuses conflicting tracked changes or an unmarked existing index
+rather than replacing them silently.
+
+Setup is complete when the command exits successfully after
+`[webshop-contract] post-index dependency checks passed` and prints the
+`WEBSHOP_ROOT` export. To check an already prepared installation without
+rebuilding its index:
+
+```bash
+python -m vrlbench.environments.webshop_dependency \
+  --root "$WEBSHOP_ROOT" --phase post-index
+```
 
 The full WebShop lock uses the same OpenAI SDK version as VRL-Bench's `runtime`
 extra. To add paired statistics without upgrading its retrieval dependencies,
@@ -98,7 +211,7 @@ Each index build records its own file hashes. New builds need not reproduce an
 older index's bytes. Shared-first-trial runs must use the same recorded
 source/data/index identity; `compare` also checks this identity when available.
 
-## 3. Configure the comparison
+### 3. Configure the comparison
 
 The supplied WebShop configurations compare:
 
@@ -112,9 +225,14 @@ The configurations select the same two goals, six trials per goal, and at most
 15 actor steps per trial. The recent-trace implementation is also an editable
 starting point for your own memory system.
 
-For page snapshots in the [step-by-step viewer](#inspect-and-compare), set
-`workload.params.capture_observations` to `true` in each configuration before
-running. Recording is off by default; saved text observations remain available.
+Set `workload.params.environment_python` to the absolute path of
+`.venv-webshop/bin/python` in every compared configuration, and reactivate
+`.venv-simulator` before running `vrlbench`. The two environments must remain
+separate; do not install OpenHands into WebShop's Python 3.10 environment.
+
+These example configurations already set
+`workload.params.capture_observations` to `true`, so their first runs save
+native pages for the [step-by-step viewer](#inspect-and-compare).
 
 In all three files, replace `YOUR_MODEL_NAME` and choose your model's
 `name`, `base_url`, `api_key_env`, and supported `request_options`. Set credentials
@@ -138,7 +256,7 @@ between attempts. Memory updates after failure only when another attempt remains
 <a id="6-run-three-online-memory-conditions"></a>
 <a id="run-a-memory-comparison"></a>
 
-## 4. Run Retry and the memory methods
+### 4. Run Retry and the memory methods
 
 Check the Retry configuration without importing plugins or executing tasks:
 
@@ -178,7 +296,7 @@ settings with your results.
 <a id="7-inspect-and-compare-online-runs"></a>
 <a id="inspect-and-compare"></a>
 
-## 5. Inspect and compare the results
+### 5. Inspect and compare the results
 
 List the recorded case IDs, then inspect the same case in each condition:
 
@@ -206,13 +324,14 @@ Previous/Next, or arrow keys to move through actions. Before/After shows the
 observation before an action and its resulting feedback. Memory context and
 evaluation state follow the selected action; recorded internal memory state
 is displayed separately from the context delivered to the actor.
-For shared first trials, include the source Retry run to load its snapshots.
+The exporter also loads snapshots from a verified shared first-trial source.
+Including Retry lets you inspect that run beside the memory condition.
 
-With `workload.params.capture_observations: true`, MiniWoB's `react_batch`
-profile saves PNGs after reset and each executed primitive action. Official
+With `workload.params.capture_observations: true`, MiniWoB saves PNGs after
+reset and each executed primitive action. Official
 WebShop runs save nonterminal native HTML; the viewer removes scripts and
-remote resources. Terminal WebShop observations, older runs, and MiniWoB's
-legacy real-time profile use recorded text when no snapshot is available.
+remote resources. Terminal WebShop observations and older runs use recorded
+text when no snapshot is available.
 Snapshots do not change actor inputs, scoring, or action budgets.
 
 The export reads saved results and snapshots only: it makes no model calls
@@ -236,11 +355,10 @@ is incomplete, not a zero task score. Any memory method can be the first,
 reference run, so you can also compare memory methods directly.
 
 For [paired confidence intervals, exact tests, and conditional power](STATISTICS.md),
-install the analysis extra while retaining WebShop's dependency constraints:
+install the analysis extra in the simulator environment:
 
 ```bash
-python -m pip install -e '.[runtime,analysis]' \
-  -c src/vrlbench/requirements/webshop-py310.lock.txt
+python -m pip install -e '.[analysis]'
 vrlbench compare runs/webshop_retry runs/webshop_trace_memory runs/webshop_reflexion \
   --statistics --analysis-unit case
 ```
@@ -255,7 +373,7 @@ Results and usage are saved in `evaluation.json`. The
 
 <a id="8-develop-your-own-memory-system"></a>
 
-## 6. Develop your own memory system
+### 6. Develop your own memory system
 
 Change retention, extraction, retrieval, context construction, or scheduling
 without replacing the surrounding execution loop. The
@@ -271,63 +389,14 @@ inspect its task metrics, recorded cases and paired feedback, modify the code,
 and evaluate again in a fresh run directory. After evaluating a method on your
 task family, [reuse its implementation in your own agent](DEVELOPMENT.md#connect-your-agent-loop).
 
-<a id="miniwob"></a>
-
-## Use MiniWoB
-
-Prepare MiniWoB in a separate Python 3.12 environment on Linux, with Chromium
-and a matching ChromeDriver. The supplied setup uses browser major version 137
-and the locked dependencies in
-[`miniwob-py312.lock.txt`](../src/vrlbench/requirements/miniwob-py312.lock.txt).
-Install the browser and driver binaries separately.
-
-From the repository root, deactivate another virtual environment before starting:
-
-```bash
-export PYTHONNOUSERSITE=1
-export PYTHONDONTWRITEBYTECODE=1
-python3.12 -m venv .venv-miniwob
-. .venv-miniwob/bin/activate
-python -m pip install -r src/vrlbench/requirements/miniwob-py312.lock.txt
-python -m pip install -e '.[runtime]'
-
-mkdir -p external
-git clone https://github.com/ltzheng/Synapse.git external/Synapse
-git -C external/Synapse checkout 89dbbf8f617fdfb6d97b27324719db95da6ccdff
-for name in action.py environment.py instance.py; do
-  cp "src/vrlbench/environments/synapse_overlay/synapse/envs/miniwob/$name" \
-    "external/Synapse/synapse/envs/miniwob/$name"
-done
-export SYNAPSE_ROOT="$PWD/external/Synapse"
-export SE_CHROME=/absolute/path/to/chromium-137
-export SE_CHROMEDRIVER=/absolute/path/to/chromedriver-137
-```
-
-Replace the browser paths with your installed binaries. The adapter checks the
-Synapse base commit and all three overlaid files; keep those files unchanged
-after setup. MiniWoB HTML tasks load from that dependency checkout.
-`SYNAPSE_ROOT` must explicitly identify this prepared external checkout.
-
-Set your model in [`miniwob_retry.json`](../examples/configs/miniwob_retry.json),
-then plan and run the supplied `click-test` case:
-
-```bash
-export OPENAI_API_KEY=your-api-key
-vrlbench simulate --config examples/configs/miniwob_retry.json --plan
-vrlbench simulate --config examples/configs/miniwob_retry.json
-vrlbench inspect runs/miniwob_retry
-```
-
-For memory comparisons, use the same model, tasks, and budgets, then set
-`shared_t1_dir` to the completed Retry run as in the WebShop workflow. The
-[development guide](DEVELOPMENT.md) covers method configuration.
-
 ## Additional workloads
 
 WebArena and OSWorld use the same multi-trial memory lifecycle,
 interaction accounting, inspection, and online metrics. Prepare each native
-environment in its own Python environment, then install `vrlbench[runtime]`
-there. Their dependencies and task assets are not installed by the SDK.
+environment in its own Python environment with `vrlbench[runtime]` installed.
+Run the simulator from a separate Python 3.12+ environment with
+`vrlbench[runtime,openhands]`, setting `workload.params.environment_python` to
+the native interpreter. Their dependencies and task assets are not installed by the SDK.
 The adapters have offline interface tests; native installations still need an
 end-to-end check on the execution host before collecting results.
 
@@ -358,6 +427,8 @@ than applying the original agent's full requirements, which include an older
 OpenAI client.
 
 ```bash
+python3.10 -m venv .venv-webarena
+. .venv-webarena/bin/activate
 python -m pip install libwebarena==0.0.5 'numpy<2' 'transformers<5' 'huggingface-hub<1'
 python -m playwright install chromium
 python -m pip install -e '.[runtime]'
@@ -380,6 +451,9 @@ Use your self-hosted URLs and authentication files, not public demo sites.
 
 Set the task config paths in
 [`webarena_retry.json`](../examples/configs/webarena_retry.json).
+Set `workload.params.environment_python` to the absolute path of
+`.venv-webarena/bin/python`, then reactivate the Python 3.12+ simulator
+environment before running the commands below.
 Use absolute paths for `storage_state` inside native task configurations;
 Playwright resolves that field from the worker's working directory.
 The `reset_factory` is a required deployment hook: replace
@@ -418,7 +492,9 @@ lacks `get_file(strict=True)` and is rejected before a VM starts.
 The adapter does not download VM images.
 
 In [`osworld_retry.json`](../examples/configs/osworld_retry.json), set the task
-config paths and `params.env_kwargs.path_to_vm`. Other `env_kwargs` are passed
+config paths, `params.environment_python` to the native environment's Python,
+and `params.env_kwargs.path_to_vm`. Run `vrlbench` from the separate Python
+3.12+ simulator environment. Other `env_kwargs` are passed
 to `DesktopEnv`, including `provider_name` and `snapshot_name`. Use a
 vision-capable model: the current screenshot is sent with the task text and
 visible accessibility or terminal output. Actions execute through the native

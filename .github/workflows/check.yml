@@ -9,7 +9,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install development dependencies
-        run: python -m pip install -e '.[runtime,analysis,dev]'
+        run: python -m pip install -e '.[runtime,openhands,analysis,dev]'
       - name: Build standard Python distributions
         run: python -m build --outdir "$RUNNER_TEMP/vrlbench-dist"
       - name: Run offline source and distribution tests
@@ -40,7 +40,7 @@ jobs:
           env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-base/bin/vrlbench" simulate --config "$local_config" --plan
           env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-base/bin/python" -c 'import sys; from vrlbench import analyze_results, posthoc_power_mcnemar; assert callable(analyze_results) and callable(posthoc_power_mcnemar); assert not any(name.split(".")[0] in {"openai", "numpy", "scipy"} for name in sys.modules)'
           python -m venv "$RUNNER_TEMP/vrlbench-runtime"
-          "$RUNNER_TEMP/vrlbench-runtime/bin/python" -m pip install "${wheel_path}[runtime,analysis]"
+          "$RUNNER_TEMP/vrlbench-runtime/bin/python" -m pip install "${wheel_path}[runtime,openhands,analysis]"
           "$RUNNER_TEMP/vrlbench-runtime/bin/python" -m pip check
           env -u PYTHONPATH "$RUNNER_TEMP/vrlbench-runtime/bin/python" -c 'from vrlbench import posthoc_power_mcnemar; assert abs(posthoc_power_mcnemar(6, 0.8) - (0.8**6 + 0.2**6)) < 1e-12'
           env -u PYTHONPATH -u OPENAI_API_KEY -u OPENAI_BASE_URL "$RUNNER_TEMP/vrlbench-runtime/bin/vrlbench" simulate --config "$local_config" --output-dir "$RUNNER_TEMP/wheel-local-feedback"

@@ -3,10 +3,11 @@ from copy import deepcopy
 import hashlib
 import json
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 POLICY_AO_TRACE_VERSION = 'policy_ao_trace'
 POLICY_SEARCH_TRACE_VERSION = 'policy_search_trace'
 LOSSLESS_OBSERVATION_TRANSPORT_VERSION = 'lossless_repeated_observation_refs'
+POLICY_HISTORY_ENCODING = 'ordered_policy_ao_observation_refs_v1'
 _VISUAL_ARTIFACT_RE = re.compile('^\\s*(?:Pre[-_ ]*|Post[-_ ]*)?(?:Screenshot|Observation image|Image|Frame)(?:\\s+\\d+)?\\s*:\\s*.+$', flags=re.I)
 
 def strip_visual_artifact_lines(trajectory: str) -> str:
@@ -207,6 +208,60 @@ def parse_policy_trajectory(trajectory: str) -> dict[str, Any] | None:
     if not terminal_seen:
         raise ValueError('canonical policy trajectory lacks its terminal record')
     return normalize_policy_evidence({'schema_version': 1, 'task': lines[1].removeprefix('Task: '), 'initial_observation': initial_observation, 'trial_close_reason': terminal_reason, 'steps': deepcopy(steps)})
+
+def serialize_policy_history(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Share exact observations without dropping or summarizing interactions.
+
+    Original canonical traces stay unchanged. This model-facing view retains
+    every task, action, close reason and observation in its original order.
+    References resolve to full strings inside the same request, not files the
+    model cannot access. Small histories keep the old representation when that
+    is smaller.
+    """
+    original: list[dict[str, Any]] = []
+    attempts: list[dict[str, Any]] = []
+    observations: dict[str, str] = {}
+    references: dict[str, str] = {}
+
+    def observation_ref(text: str) -> dict[str, str]:
+        if text not in references:
+            ref = f'OBS-{len(references) + 1}'
+            references[text] = ref
+            observations[ref] = text
+        return {'observation_ref': references[text]}
+
+    for row in rows:
+        trace = str(row['ao_trace'])
+        parsed = parse_policy_trajectory(trace)
+        if parsed is None:
+            raise ValueError('observation references require a canonical policy A-O trace')
+        attempt = int(row['trial']) + 1
+        original.append({'attempt': attempt, 'canonical_policy_ao_trace': trace})
+        attempts.append({
+            'attempt': attempt,
+            'canonical_policy_ao_trace_sha256': hashlib.sha256(trace.encode('utf-8')).hexdigest(),
+            'schema_version': parsed['schema_version'],
+            'task': parsed['task'],
+            'initial_observation': observation_ref(parsed['initial_observation']),
+            'steps': [{'action': step['action'], 'observation': observation_ref(step['observation'])}
+                      for step in parsed['steps']],
+            'trial_close_reason': parsed['trial_close_reason'],
+        })
+    raw = {'encoding': 'ordered_raw_canonical_policy_ao_trace', 'attempts': original}
+    compact = {
+        'encoding': POLICY_HISTORY_ENCODING,
+        'observation_reference_semantics': (
+            'Each observation_ref denotes the complete, exact observation in the observations table. '
+            'Repeated references are repeated visits, not omitted interactions. '
+            'Attempts and steps retain their execution order.'),
+        'observations': observations,
+        'attempts': attempts,
+    }
+    # Compare the actual JSON form used by the model, including escaping.
+    raw_bytes = len(json.dumps(raw, ensure_ascii=False, indent=2).encode('utf-8'))
+    compact_bytes = len(json.dumps(compact, ensure_ascii=False, indent=2).encode('utf-8'))
+    return compact if compact_bytes < raw_bytes else raw
+
 
 def intern_repeated_policy_observations(text: str, policy_trajectory: str) -> tuple[str, dict[str, Any]]:
     """Replace exact repeated observations with reversible textual refs.

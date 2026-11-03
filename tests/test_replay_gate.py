@@ -189,36 +189,6 @@ class ReplayLifecycle(unittest.TestCase):
             self.assertEqual(len([row for row in identities if row["role"] == "replay_policy"]), 1)
             self.assertTrue(all(trial["context"] == "" for case in result.cases for trial in case["trials"]))
 
-    def test_native_webshop_persists_delivered_and_prepared_whole_method_context(self):
-        from test_method_extension import PLUGIN, RAW_CONTEXT
-        from vrlbench import simulate
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            plugin = root / "candidate.py"
-            plugin.write_text(PLUGIN)
-            source = SimulationSpec(
-                WorkloadSpec("webshop", [0], factory=FactorySpec(f"{plugin}:create_webshop_backend")),
-                ModelSpec("scripted", transport=FactorySpec(f"{plugin}:create_client")),
-                trials=3, max_environment_steps=15, output_dir=str(root / "retry"), require_provider_usage=False,
-            )
-            baseline = simulate(source).require_complete()
-            source_bytes = (root / "retry/evaluation.json").read_bytes()
-            candidate = replace(source, output_dir=str(root / "candidate"),
-                                shared_t1_dir=str(root / "retry"),
-                                memory=MemorySpec("joint_method", method_factory=FactorySpec(
-                                    f"{plugin}:create_method", {"log": str(root / "events.jsonl")})),
-                                replay_gate=ReplayGateSpec(epsilon=1))
-            result = simulate(candidate).require_complete()
-            first, second = result.cases[0]["trials"][:2]
-            self.assertNotIn("replay_gate", first["trial_metadata"])
-            self.assertEqual(first["trajectory"], baseline.cases[0]["trials"][0]["trajectory"])
-            self.assertEqual((second["context"], second["system_context"], second["user_context"]), ("", "", ""))
-            self.assertEqual(second["trial_metadata"]["replay_gate"]["prepared_system_context"], RAW_CONTEXT)
-            persisted = json.loads((root / "candidate/reference/episodes.json").read_text())[0]["trials"][1]
-            self.assertEqual(persisted["trial_metadata"]["replay_gate"], second["trial_metadata"]["replay_gate"])
-            self.assertEqual(persisted["system_context"], "")
-            self.assertEqual((root / "retry/evaluation.json").read_bytes(), source_bytes)
-
     def test_sdk_binding_restores_loop_hooks_after_exception(self):
         from vrlbench.backends import memory_bindings
         from vrlbench.runtime import framework, loop

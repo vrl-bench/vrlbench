@@ -5,7 +5,6 @@ from __future__ import annotations
 from contextlib import contextmanager, ExitStack
 from copy import deepcopy
 from dataclasses import dataclass
-import importlib
 import json
 from pathlib import Path
 import re
@@ -205,18 +204,6 @@ def memory_bindings(spec: Mapping[str, Any]) -> Iterator[tuple[str, str, list[di
                 stack.enter_context(_temporary_attribute(loop, "run_episode", run_episode))
                 stack.enter_context(_temporary_attribute(loop, "prepare_shared_t1", prepare_shared_t1))
                 stack.enter_context(_temporary_attribute(framework, "run_episode", run_episode))
-                benchmark = spec["benchmark"]["name"]
-                if benchmark in {"miniwob", "webshop"}:
-                    runner = importlib.import_module(f"vrlbench.environments.{benchmark}")
-                    normalizer = f"_normalize_{benchmark}_controller"
-                    stack.enter_context(_temporary_attribute(runner, normalizer, allow_name(getattr(runner, normalizer))))
-                    # MiniWoB imports its factory locally; WebShop keeps a
-                    # module binding. The former sees controllers above.
-                    if hasattr(runner, "make_controller"):
-                        stack.enter_context(_temporary_attribute(runner, "make_controller", make_controller))
-                    for attribute, replacement in (("run_episode", run_episode), ("prepare_shared_t1", prepare_shared_t1)):
-                        if hasattr(runner, attribute):
-                            stack.enter_context(_temporary_attribute(runner, attribute, replacement))
             gate = spec.get("replay_gate")
             if gate is not None:
                 from vrlbench.runtime import framework, loop
@@ -232,11 +219,6 @@ def memory_bindings(spec: Mapping[str, Any]) -> Iterator[tuple[str, str, list[di
                                          benchmark=spec["benchmark"]["name"], policy_factory=policy_factory)
                 stack.enter_context(_temporary_attribute(loop, "run_episode", gated))
                 stack.enter_context(_temporary_attribute(framework, "run_episode", gated))
-                benchmark = spec["benchmark"]["name"]
-                if benchmark in {"miniwob", "webshop"}:
-                    runner = importlib.import_module(f"vrlbench.environments.{benchmark}")
-                    if hasattr(runner, "run_episode"):
-                        stack.enter_context(_temporary_attribute(runner, "run_episode", gated))
             yield binding
     finally:
         for name in set(_SLOTS) - original_slots:
@@ -272,7 +254,7 @@ class BackendRuntime:
     def make_memory(self) -> Any:
         from vrlbench.runtime.er import make_er_slot
 
-        return make_er_slot(self.er_name)
+        return make_er_slot(self.er_name, **self.spec.get("memory", {}).get("params", {}))
 
     def make_controller(self) -> Any:
         from vrlbench.runtime.controllers import make_controller
@@ -310,11 +292,6 @@ class BackendRuntime:
             on_trial(prefix)
         return run_episode(actor=actor, manager=manager, **common, initial_result=prefix,
                            reset_state=False, token_ledger=ledger, on_trial=on_trial)
-
-    def run_reference(self) -> list[dict[str, Any]]:
-        """Execute an original MiniWoB/WebShop runner with these bindings."""
-        return run_reference(self.spec, self.er_name, self.controller)
-
 
 def register_memory(spec: Mapping[str, Any], *, native_rules: bool = False) -> tuple[str, str, list[dict[str, Any]]]:
     """Bind one candidate factory in this worker, never in the caller process."""
@@ -381,205 +358,65 @@ def register_memory(spec: Mapping[str, Any], *, native_rules: bool = False) -> t
     return runtime_name, "none", [{"role": "memory", **identity}]
 
 
-def _case_rows(path: Path, *, task: str | None = None) -> list[dict[str, Any]]:
-    rows = json.loads(path.read_text())
-    if not isinstance(rows, list):
-        raise TypeError(f"Expected a list of cases at {path}")
-    converted = []
-    for row in rows:
-        if "case_id" in row:
-            converted.append(dict(row))
-            continue
-        converted.append({
-            "case_id": str(row.get("name", row.get("sample_index", row.get("episode", "")))),
-            "task": str(task or row.get("task") or "webshop"),
-            "trials": row["trials"],
-            "resource_usage": row.get("resource_usage", {}),
-        })
-    return converted
-
-
-def _validate_sdk_shared_source(spec: Mapping[str, Any]) -> None:
-    """Check SDK selection/settings in addition to native shared-T1 validation."""
-    value = spec.get("shared_t1_dir")
-    if not value:
-        return
-    source = Path(value).resolve()
-    candidates = [source]
-    if source.name == "reference":
-        candidates.append(source.parent)
-    elif source.parent.name == "reference":
-        candidates.append(source.parent.parent)
-    root = next((path for path in candidates if (path / "request.json").is_file()), None)
-    if root is None:
-        return  # Original runner artifacts still receive their native checks.
-    original = json.loads((root / "request.json").read_text())
-    status_path = root / "evaluation.json"
-    if not status_path.is_file() or json.loads(status_path.read_text()).get("status") != "complete":
-        raise ValueError("Shared T1 must come from a completed SDK evaluation")
-    if (original.get("memory", {}).get("name") != "retry"
-            or original.get("memory", {}).get("factory") is not None
-            or original.get("memory", {}).get("method_factory") is not None):
-        raise ValueError("Shared T1 must come from the reference memory-free Retry condition")
-    from vrlbench.worker import expected_case_ids
-    from vrlbench._comparison import comparable_actor
-
-    if comparable_actor(original.get("actor")) != comparable_actor(spec.get("actor")):
-        raise ValueError("Shared T1 SDK actor differs")
-
-    if original["benchmark"]["name"] != spec["benchmark"]["name"]:
-        raise ValueError("Shared T1 SDK benchmark differs")
-    if original["benchmark"].get("factory") != spec["benchmark"].get("factory"):
-        raise ValueError("Shared T1 SDK benchmark factory differs")
-    if expected_case_ids(original["benchmark"]) != expected_case_ids(spec["benchmark"]):
-        raise ValueError("Shared T1 SDK case selection differs")
-    for key in ("model", "trials", "max_environment_steps", "max_total_tokens", "runtime_env"):
-        if original.get(key) != spec.get(key):
-            raise ValueError(f"Shared T1 SDK {key} differs")
-    name = spec["benchmark"]["name"]
-    defaults = {"headless": True, "trial_seed_mode": "paired_trial"} if name == "miniwob" else {"max_actor_steps": None}
-    original_params = {**defaults, **original["benchmark"].get("params", {})}
-    current_params = {**defaults, **spec["benchmark"].get("params", {})}
-    if original_params != current_params:
-        raise ValueError("Shared T1 SDK benchmark parameters differ")
-
-
-def run_reference(spec: Mapping[str, Any], er_name: str, controller: str) -> list[dict[str, Any]]:
-    """Reuse the two original runners without rewriting their task lifecycle."""
-    benchmark = spec["benchmark"]
-    name = benchmark["name"]
-    params = dict(benchmark.get("params", {}))
-    cases = benchmark["cases"]
-    output = Path(spec["output_dir"]) / "reference"
-    _validate_sdk_shared_source(spec)
-    shared_root = spec.get("shared_t1_dir")
-    if shared_root and (Path(shared_root) / "reference").is_dir():
-        shared_root = str(Path(shared_root) / "reference")
-    common = {
-        "model": spec["model"]["name"], "trials": spec["trials"],
-        "er": er_name, "controller": controller,
-        "shared_t1_dir": shared_root,
-        "max_environment_steps": spec["max_environment_steps"],
-        "max_total_tokens": spec.get("max_total_tokens"),
-        "require_provider_usage": bool(spec.get("require_provider_usage", False)),
-        "capture_observations": params.get("capture_observations", False),
-    }
-    if type(common["capture_observations"]) is not bool:
-        raise ValueError("capture_observations must be a boolean")
-    if name == "webshop":
-        unknown = set(params) - {"max_actor_steps", "capture_observations"}
-        if unknown:
-            raise ValueError(f"Unknown WebShop parameters: {sorted(unknown)}")
-        if any(type(case) is not int for case in cases):
-            raise TypeError("WebShop cases must be integer goal indices")
-        from vrlbench.environments import webshop
-
-        webshop.run(**common, sample_indices=list(cases), num_envs=len(cases),
-                    max_steps=params.get("max_actor_steps"), output_dir=str(output))
-        _require_finished(output)
-        return _case_rows(output / "episodes.json")
-    if name != "miniwob":
-        raise ValueError(f"Unsupported reference benchmark {name!r}")
-    unknown = set(params) - {"headless", "trial_seed_mode", "capture_observations"}
-    if unknown:
-        raise ValueError(f"Unknown MiniWoB parameters: {sorted(unknown)}")
-    grouped: dict[str, list[int]] = {}
-    for case in cases:
-        if not isinstance(case, dict) or not isinstance(case.get("task"), str) or type(case.get("episode")) is not int:
-            raise TypeError("MiniWoB cases must contain task and integer episode")
-        grouped.setdefault(case["task"], []).append(case["episode"])
-    from vrlbench.environments import miniwob
-
-    result = []
-    task_index = {}
-    for index, (task, episodes) in enumerate(grouped.items()):
-        task_output = output / f"task-{index:04d}"
-        task_index[task] = task_output.name
-        task_common = dict(common)
-        if shared_root and (Path(shared_root) / "task_index.json").is_file():
-            source_index = json.loads((Path(shared_root) / "task_index.json").read_text())
-            relative = source_index.get(task)
-            if not isinstance(relative, str):
-                raise KeyError(f"Shared T1 source does not contain MiniWoB task {task!r}")
-            source_dir = (Path(shared_root) / relative).resolve()
-            if Path(shared_root).resolve() not in source_dir.parents:
-                raise ValueError("Shared T1 task index points outside its source root")
-            task_common["shared_t1_dir"] = str(source_dir)
-        miniwob.run(**task_common, tasks=[task], episode_indices=episodes,
-                    episodes_per_task=len(episodes), output_dir=str(task_output),
-                    headless=params.get("headless", True),
-                    trial_seed_mode=params.get("trial_seed_mode", "paired_trial"))
-        _require_finished(task_output)
-        result.extend(_case_rows(task_output / "episodes.json", task=task))
-        output.mkdir(parents=True, exist_ok=True)
-        (output / "task_index.json").write_text(json.dumps(task_index, indent=2) + "\n")
-    return result
-
-
-def _require_finished(output: Path) -> None:
-    summary = json.loads((output / "results.json").read_text())
-    if summary.get("checkpoint") is not False:
-        raise RuntimeError("The benchmark runner produced an incomplete checkpoint")
-    if summary.get("infra_failures"):
-        raise RuntimeError("The benchmark runner reported infrastructure failures")
-
-
 def run_backend(spec: Mapping[str, Any], er_name: str, controller: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     benchmark = spec["benchmark"]
-    factory_spec = benchmark.get("factory")
-    if factory_spec is not None:
-        backend, identity = create_plugin(factory_spec)
+    if benchmark.get("factory") is not None:
+        backend, identity = create_plugin(benchmark["factory"])
         method = getattr(backend, "run", None)
         if not callable(method):
             raise TypeError("A benchmark factory must return an object with run(spec, runtime)")
         runtime = BackendRuntime(spec=spec, er_name=er_name, controller=controller)
         return method(dict(spec), runtime), [{"role": "benchmark", **identity}]
-    if spec.get("actor", {}).get("name", "react") == "openhands":
-        return run_openhands(spec, er_name, controller)
-    if benchmark["name"] == "webarena":
-        from .environments.webarena import run
-        return run(spec, BackendRuntime(spec, er_name, controller)), []
-    if benchmark["name"] == "osworld":
-        from .environments.osworld import run
-        return run(spec, BackendRuntime(spec, er_name, controller)), []
-    return run_reference(spec, er_name, controller), []
+    return run_interactive(spec, er_name, controller)
 
 
-def run_openhands(spec: Mapping[str, Any], er_name: str,
-                  controller: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Run the native task sessions through an optional OpenHands actor.
-
-    Only actor execution changes: the shared trial loop still owns memory,
-    stopping, outcomes and comparison budgets. An environment may live in a
-    different Python interpreter without changing its native dependencies.
-    """
-    import sys
+def run_interactive(spec: Mapping[str, Any], er_name: str,
+                    controller: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run every built-in workload through the same actor/session interface."""
     import os
+    import sys
     from importlib.metadata import version
 
-    if sys.version_info < (3, 12):
-        raise RuntimeError("The OpenHands actor requires Python 3.12 or newer; install vrlbench[runtime,openhands] there")
-    # SDK prompt caches resolve this directory at import time. Keep all SDK
-    # auxiliary state with this run, never in the user's home or another case.
-    os.environ["OH_PERSISTENCE_DIR"] = str(Path(spec["output_dir"]) / "reference" / "openhands-state")
-    try:
-        sdk_version = version("openhands-sdk")
-    except ImportError as exc:
-        raise ModuleNotFoundError("The OpenHands actor requires pip install 'vrlbench[runtime,openhands]'") from exc
+    actor = spec.get("actor") or {"name": "openhands", "params": {}}
+    actor_factory = None
+    if actor.get("factory") is not None:
+        factory, source = load_factory(actor["factory"])
+        factory_kwargs = dict(actor["factory"].get("kwargs", {}))
+
+        def actor_factory(**kwargs: Any) -> Any:
+            if set(kwargs) & set(factory_kwargs):
+                raise ValueError("actor factory kwargs cannot replace runtime-supplied arguments")
+            return factory(**kwargs, **factory_kwargs)
+
+        actor_identity = {"role": "actor", "name": actor["name"], **source}
+    else:
+        if actor["name"] != "openhands":
+            raise ValueError("the built-in actor is openhands; custom actors require actor.factory")
+        if sys.version_info < (3, 12):
+            raise RuntimeError("Built-in simulations require Python 3.12+ and vrlbench[runtime,openhands]")
+        # Set before importing the SDK: all auxiliary state belongs to this run.
+        os.environ["OH_PERSISTENCE_DIR"] = str(Path(spec["output_dir"]) / "reference" / "openhands-state")
+        try:
+            sdk_version = version("openhands-sdk")
+        except ImportError as exc:
+            raise ModuleNotFoundError("Install the simulation runtime: pip install 'vrlbench[runtime,openhands]'") from exc
+        actor_identity = {"role": "actor", "name": "openhands", "sdk_version": sdk_version}
 
     from .environments.interactive import run_cases
     from .environments.native_sessions import make_session
 
-    benchmark = spec["benchmark"]
-    name = benchmark["name"]
-    condenser_spec = spec.get("actor", {}).get("params", {}).get("condenser")
+    condenser_spec = actor.get("params", {}).get("condenser") if actor["name"] == "openhands" else None
     condenser_identity = None
     if condenser_spec is not None:
         _, condenser_identity = load_factory(condenser_spec)
-        if spec.get("shared_t1_dir") is not None:
-            from ._shared_t1 import load_shared_first_trials
+    if spec.get("shared_t1_dir") is not None:
+        from ._shared_t1 import load_shared_first_trials
 
-            load_shared_first_trials(spec, condenser_identity=condenser_identity)
+        load_shared_first_trials(spec, actor_identity=actor_identity,
+                                 condenser_identity=condenser_identity)
+
+    benchmark = spec["benchmark"]
+    name = benchmark["name"]
     if name == "miniwob":
         cases = [{**case, "case_id": f"{case['task']}_ep{case['episode']}"}
                  for case in benchmark["cases"]]
@@ -594,13 +431,12 @@ def run_openhands(spec: Mapping[str, Any], er_name: str,
                             environment_pythonpath=spec.get("runtime_env", {}).get("PYTHONPATH"))
 
     runtime = BackendRuntime(spec=spec, er_name=er_name, controller=controller)
-    rows = run_cases(spec, runtime, create_session, cases=cases)
-    identity = [{"role": "actor", "name": "openhands", "sdk_version": sdk_version}]
+    rows = run_cases(spec, runtime, create_session, cases=cases, actor_factory=actor_factory)
+    identity = [actor_identity]
     if condenser_identity is not None:
         for row in rows:
             for trial in row["trials"]:
-                actual = trial["trial_metadata"].get("condenser_identity")
-                if actual != condenser_identity:
+                if trial["trial_metadata"].get("condenser_identity") != condenser_identity:
                     raise ValueError("The OpenHands condenser source changed during evaluation")
         identity.append({"role": "actor_condenser", **condenser_identity})
     return rows, identity

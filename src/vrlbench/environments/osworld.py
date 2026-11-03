@@ -248,6 +248,19 @@ class OSWorldSession:
                 "OSWorld special markers DONE, FAIL, and WAIT must be standalone "
                 "responses, not mixed with Python code"
             )
+        if len(program.body) == 1 and isinstance(program.body[0], ast.Expr):
+            try:
+                ast.literal_eval(program.body[0].value)
+            except (ValueError, TypeError):
+                try:
+                    json.loads(action)
+                except json.JSONDecodeError:
+                    return action
+            raise ValueError(
+                "OSWorld data literals and JSON action descriptions are not executable actions. "
+                "Return one self-contained executable Python program or a standalone "
+                "DONE, FAIL, or WAIT marker. No environment action was executed."
+            )
         return action
 
     def step(self, action: str) -> Transition:

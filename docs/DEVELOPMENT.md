@@ -14,8 +14,91 @@ components whose parameters are the only things you can change.
 
 ## Bring your own memory
 
-Complete the [WebShop comparison](QUICKSTART.md#run-a-memory-comparison), then
-save this `MemorySystem` implementation as `my_memory.py`:
+Start from a completed Retry run in the environment you have prepared. The
+[MiniWoB quick start](QUICKSTART.md#use-miniwob) is the lightest real-task path:
+its configuration selects `click-test`, episode 0, with six trials, 128 action
+opportunities per trial, and page recording enabled. Wait for Retry to report
+`status: complete`, and keep its full `runs/miniwob_retry` directory.
+
+From the repository root, copy the editable memory implementation and the
+same Retry configuration:
+
+```bash
+cp examples/memory_strategy/initial_strategy.py my_memory.py
+cp examples/configs/miniwob_retry.json examples/configs/miniwob_my_memory.json
+```
+
+Edit `my_memory.py` to implement your memory system. The supplied
+[`initial_strategy.py`](../examples/memory_strategy/initial_strategy.py) is a
+complete `MemorySystem` implementation that retains the two most recent failed
+traces, not a required algorithm. Replace its state, update, retrieval, and
+context-building logic as needed; keep `create_memory()` returning a fresh
+instance. The [lifecycle hooks](#memory-lifecycle) below describe the interface.
+
+In `examples/configs/miniwob_my_memory.json`, replace `memory` and `output_dir`
+and add `shared_t1_dir` as follows. This is a three-field fragment, not the
+complete configuration:
+
+```json
+{
+  "memory": {
+    "name": "my_memory",
+    "factory": {"entrypoint": "../../my_memory.py:create_memory"}
+  },
+  "shared_t1_dir": "../../runs/miniwob_retry",
+  "output_dir": "../../runs/miniwob_my_memory"
+}
+```
+
+Keep every other field from the completed Retry configuration unchanged,
+including the actor, model, cases, reset rules, recording settings, and budgets.
+Paths in JSON resolve from the configuration file's directory, so
+`../../my_memory.py` names the file saved at the repository root and
+`shared_t1_dir` names the completed memory-free run, not the new output directory.
+Preserve its native first-trial records, not just `evaluation.json`.
+
+Continue with the same CLI workflow. Simulation executes the configured actor
+and your memory implementation; model calls may incur API charges:
+
+```bash
+vrlbench simulate --config examples/configs/miniwob_my_memory.json --plan
+vrlbench simulate --config examples/configs/miniwob_my_memory.json
+vrlbench inspect runs/miniwob_my_memory
+vrlbench replay runs/miniwob_retry runs/miniwob_my_memory \
+  --output runs/miniwob-my-memory-replay.html
+vrlbench compare runs/miniwob_retry runs/miniwob_my_memory
+```
+
+Wait for the new simulation to report `status: complete` before comparing.
+Open `runs/miniwob-my-memory-replay.html` to inspect the saved pages, actions,
+and memory; replay does not execute tasks or call a model. The first trial is
+reused from Retry. If it succeeds, the case stops without generating memory;
+this small task is a first run, not evidence of a memory method's quality.
+
+For each revision, keep the matched Retry source and use new output and replay
+paths. To use WebShop or another prepared environment, copy its own Retry
+configuration and change only the same memory binding and run paths. If you
+change the actor, model, cases, or budgets, generate a new matched Retry source.
+For an offline interface check before running tasks, use the
+[optional examples](QUICKSTART.md#local-interface-check).
+
+Factories accept JSON-compatible keyword arguments and can be named as
+`package.module:create_memory` or `/path/to/file.py:create_memory`. Use a
+distinct `memory.name`; a custom factory cannot replace a built-in reference
+name.
+
+For local files, prefer an explicit file entrypoint. Module entrypoints must be
+installed or visible on the caller's import path; the worker preserves those
+roots when changing to the run directory. Ordinary sibling imports work, but
+conflicting statically declared local dependencies fail instead of reusing
+another component's module. For larger plugins, use distinct package names and
+package-relative imports.
+
+### Advanced: configure a run in Python
+
+The SDK can express the same matched run without writing a new JSON
+configuration. As an alternative to the copied implementation above, save this
+`MemorySystem` implementation as `my_memory.py` at the repository root:
 
 ```python
 from vrlbench.memory import MemorySystem
@@ -43,15 +126,15 @@ def create_memory(keep=2):
     return RecentFailures(keep=keep)
 ```
 
-Evaluate its factory on the same tasks, using the configured Retry run as the
-shared first-trial source:
+Evaluate its factory on the same MiniWoB tasks, using the completed Retry run
+as the shared first-trial source:
 
 ```python
 from dataclasses import replace
 from pathlib import Path
 from vrlbench import SimulationSpec, FactorySpec, MemorySpec, simulate
 
-base = SimulationSpec.from_path("examples/configs/webshop_retry.json")
+base = SimulationSpec.from_path("examples/configs/miniwob_retry.json")
 spec = replace(
     base,
     memory=MemorySpec(
@@ -68,25 +151,9 @@ result = simulate(spec).require_complete()
 print(result.metrics)
 ```
 
-This runs the configured actor in WebShop with your memory implementation;
-model calls may incur API charges. Keep the completed Retry directory and use
-a new output directory for each candidate. Change the memory implementation
-while holding the actor, tasks, and budgets fixed, then
-[inspect and compare](#inspect-and-compare-results) the resulting behavior.
-For a local interface check before preparing a benchmark, use the
-[optional examples](QUICKSTART.md#local-interface-check).
-
-Factories accept JSON-compatible keyword arguments and can be named as
-`package.module:create_memory` or `/path/to/file.py:create_memory`. Relative file
-paths in JSON resolve from the configuration file's directory. Use a distinct
-`memory.name`; a custom factory cannot replace a built-in reference name.
-
-For local files, prefer an explicit file entrypoint. Module entrypoints must be
-installed or visible on the caller's import path; the worker preserves those
-roots when changing to the run directory. Ordinary sibling imports work, but
-conflicting statically declared local dependencies fail instead of reusing
-another component's module. For larger plugins, use distinct package names and
-package-relative imports.
+Keep the actor, tasks, and budgets fixed and use a new output directory for
+each candidate, then [inspect and compare](#inspect-and-compare-results) the
+resulting behavior with the same CLI commands or the Python analysis API.
 
 ### Memory lifecycle
 
@@ -102,8 +169,14 @@ package-relative imports.
 `reset()` and `build_section()` are abstract. The default `read_for_trial()`
 returns `build_section()`; override the full read/write hooks for retrieval,
 selective replay, or budget-aware context construction. `on_trial_end()` receives
-the canonical executed action–observation trace and, when available, the original
-`actor_trajectory` separately.
+the canonical executed action–observation trace and, when available, the full
+`actor_trajectory` separately. Repeated observations in the writer's transcript
+may use exact references with their full text included in the same input; the
+original transcript remains in the run record. VEX² and the editable memory
+example similarly share repeated observations across their model-facing
+histories, preserving every action, observation and its order. This changes the
+input representation, not the stored execution record. Custom plugins retain
+control of their own memory representation.
 
 The built-in loop resets memory between cases, stops on success, and invokes
 the memory writer after failure only when another trial remains. A factory must
@@ -202,6 +275,14 @@ same core implementations:
 | `dc_cu` | [DC-Cu*: maintain a cumulative cheatsheet](../src/vrlbench/runtime/er/dynamic_cheatsheet.py). | [Dynamic Cheatsheet — EACL 2026](https://aclanthology.org/2026.eacl-long.333/) |
 | `ace` | [ACE*: update a playbook from failure reflections](../src/vrlbench/runtime/er/ace.py). | [ACE — ICLR 2026](https://arxiv.org/abs/2510.04618) |
 | `vex2` | [VEX²: jointly select policy directions and allocate remaining trials](../src/vrlbench/runtime/controllers/dsst.py). | [VRL-Bench](https://arxiv.org/abs/2609.12404) |
+
+Reflexion retains its original 256-token reflection limit by default. To allow
+longer reflections, use `MemorySpec("reflexion", params={"max_tokens": 1024})`
+or `load_method("reflexion", client=client, params={"max_tokens": 1024})`.
+In JSON, set `"memory": {"name": "reflexion", "params": {"max_tokens": 1024}}`.
+The run's `provider_requests.jsonl` records `finish_reason` and
+`output_truncated` for each response; `length` indicates the provider stopped
+at its output limit. The returned text is retained without continuation or repair.
 
 DC-Cu* and ACE* adapt the original update mechanisms to failure-only, same-task
 trial-and-error evaluation, not the original papers' cross-task settings.
@@ -502,8 +583,10 @@ model = ModelSpec(
 ```
 
 Set `MY_PROVIDER_API_KEY` in the calling environment, not JSON. Actor and built-in
-memory calls share the declared transport and request options. Endpoint settings
-are worker-local; they do not modify the caller's environment or cached client.
+memory calls use the declared model and endpoint. Endpoint settings are
+worker-local; they do not modify the caller's environment or cached client.
+Set the actor's output allowance with `actor.params.max_output_tokens`, not
+`model.request_options.max_tokens`.
 
 Use `request_options` for supported provider-specific fields. A `null` value
 removes a field supplied by the reference caller when the provider rejects it.
@@ -512,6 +595,9 @@ Protocol fields such as `model`, `messages`, and `stream` cannot be overridden;
 different response-model names in `allowed_response_models`, and test a small
 task selection before a larger run.
 
+Built-in OpenHands simulations use the SDK's native model client. The
+`ModelSpec.transport` factory below is for custom backends; standalone memory
+methods can also receive a client through `load_method(..., client=...)`.
 For a custom transport, provide a factory returning an OpenAI-compatible
 `client.chat.completions.create(**kwargs)`. For example, save this client factory
 as `my_transport.py` and replace its client construction with your adapter:
@@ -550,9 +636,34 @@ model = ModelSpec(
 ```
 
 The worker creates the client lazily. Responses must provide completion text
-and the usage fields consumed by the reference runtime. Routing actor and
-memory calls through this shared transport preserves request accounting; a
-custom transport owns its client timeout and retry configuration.
+and the usage fields consumed by the runtime. A custom transport owns its
+client timeout and retry configuration.
+
+## Use another actor
+
+OpenHands is the only built-in actor. The actor interface is independent of
+memory methods and workload adapters. To connect another agent framework,
+bind a trusted factory without changing the simulator's trial loop:
+
+```python
+from vrlbench import ActorSpec, FactorySpec
+
+actor = ActorSpec(
+    name="my_agent",
+    factory=FactorySpec("my_package.actor:create_actor"),
+    params={"model_setting": "value"},
+)
+```
+
+The factory receives `session`, `model`, `model_config`, `actor_params`,
+`max_environment_steps`, `artifact_dir`, `capture_observations`, and
+`on_progress`. Return an
+[`InteractiveActor`](../src/vrlbench/environments/interactive.py) subclass
+implementing `__call__()`. Use its shared action admission, environment
+dispatch, observation capture and checkpoint methods; the backend supplies
+its own conversation loop. Memory remains in the outer trial loop, not in
+actor-global state. Actor source hashes are recorded and checked before
+reusing a shared first trial.
 
 ## Select tasks and budgets
 
@@ -573,8 +684,7 @@ miniwob = WorkloadSpec(
 |---|---|
 | `SimulationSpec.trials` | Required positive integer: complete attempts per case, stopping on success. |
 | `max_environment_steps` | Required positive integer: action budget within each trial. |
-| `workload.params.max_actor_steps` | Legacy WebShop field; `max_environment_steps` takes precedence. |
-| `max_total_tokens` | Cumulative model tokens per case, across its trials. |
+| `max_total_tokens` | Optional cumulative token ceiling for custom runtimes; not supported by OpenHands. |
 | `timeout_seconds` | Evaluation worker wall-clock limit, distinct from the model-call timeout. |
 | `require_provider_usage` | Require provider-reported model usage for accounted runs. |
 | `runtime_env` | Nonsecret worker-local settings, such as external benchmark paths. |

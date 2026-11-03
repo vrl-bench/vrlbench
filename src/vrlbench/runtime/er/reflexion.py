@@ -11,7 +11,6 @@ _SOURCE_COMMIT = '218cf0ef1df84b05ce379dd4a8e47f17766733a0'
 _VISIBILITY_WINDOW = None
 _VISIBILITY_PROTOCOL = 'all_failure_reflections'
 _UPSTREAM_REFLECTION_MAX_TOKENS = 256
-_EVALUATION_REFLECTION_MAX_TOKENS = _UPSTREAM_REFLECTION_MAX_TOKENS
 _SUPPORTED_BENCHMARKS = frozenset({'miniwob', 'webshop', 'webarena', 'osworld'})
 _PROMPT_DIR = Path(__file__).resolve().parent / 'source_prompts'
 _PROMPT_ARTIFACTS: Mapping[str, tuple[str, str]] = {'miniwob_writer': ('reflexion_miniwob_writer.txt', '6445984018bb794c35d004138e488e11c89c37c2bf2a12e48924ddc68d3cd5b8'), 'webshop_writer': ('reflexion_webshop_writer.txt', '495f3492da8216d3a4ef14ee81945924a967ef266b99b2e00dc3e7e50a6152f2'), 'webshop_few_shot': ('reflexion_webshop_few_shot.txt', 'c0bd69af24fecc4d0b30f92e58af1e4f86320eb227b7002584bb04a88e913621')}
@@ -97,7 +96,10 @@ def _reflection_text(raw: str) -> str:
 class Reflexion(ERSlot):
     """Failure reflection with native or explicitly adapted writer prompts."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_tokens: int = _UPSTREAM_REFLECTION_MAX_TOKENS) -> None:
+        if type(max_tokens) is not int or max_tokens < 1:
+            raise ValueError('reflexion max_tokens must be a positive integer')
+        self.max_tokens = max_tokens
         self._entries = []
         self._benchmark = None
 
@@ -128,10 +130,10 @@ class Reflexion(ERSlot):
                        + ". Observation 0 is before the first action; observation i is after "
                          "environment action i. Use the attached images, not file paths, "
                          "when interpreting visible changes.")
-            raw = complete(prompt, model=model, max_tokens=_EVALUATION_REFLECTION_MAX_TOKENS,
+            raw = complete(prompt, model=model, max_tokens=self.max_tokens,
                            images=[image for _, image in observations])
         else:
-            raw = complete(prompt, model=model, max_tokens=_EVALUATION_REFLECTION_MAX_TOKENS)
+            raw = complete(prompt, model=model, max_tokens=self.max_tokens)
         self._entries.append(_reflection_text(raw))
 
     def read_for_trial(self, *, trial_index: int, total_trials: int, model: str, past_trajectories: Sequence[str] | None=None, metadata: dict[str, Any] | None=None) -> str:

@@ -17,7 +17,7 @@ import re
 from threading import RLock
 from typing import Any, Iterator, Mapping, Sequence
 
-from ._method_names import METHOD_NAMES, canonical_method_name, reference_method_binding
+from ._method_names import METHOD_NAMES, canonical_method_name, reference_method_binding, validate_method_params
 
 
 @dataclass
@@ -144,7 +144,7 @@ def render_trajectory(*, task: str, initial_observation: str,
     })
 
 
-def load_method(name: str, *, client: Any = None) -> MemoryMethod:
+def load_method(name: str, *, client: Any = None, params: Mapping[str, Any] | None = None) -> MemoryMethod:
     """Create a lazy reference-method adapter with an optional compatible client.
 
     All calls through this API are serialized while binding the reference LLM
@@ -154,12 +154,17 @@ def load_method(name: str, *, client: Any = None) -> MemoryMethod:
     key = canonical_method_name(name)
     if key is None:
         raise ValueError(f"Unknown method {name!r}; choose from {', '.join(METHOD_NAMES)}")
-    return _ReferenceMethod(key, client=client)
+    if params is not None and not isinstance(params, Mapping):
+        raise TypeError("method params must be a mapping")
+    options = dict(params or {})
+    validate_method_params(key, options)
+    return _ReferenceMethod(key, client=client, params=options)
 
 
 class _ReferenceMethod(MemoryMethod):
-    def __init__(self, name: str, *, client: Any = None) -> None:
+    def __init__(self, name: str, *, client: Any = None, params: Mapping[str, Any] | None = None) -> None:
         self.name = name
+        self._params = dict(params or {})
         self._client = client
         self._default_client: Any = None
         self._config: CaseConfig | None = None
@@ -179,7 +184,7 @@ class _ReferenceMethod(MemoryMethod):
         bound = deepcopy(config)
         if bound.environment_rules:
             bound.metadata["basic_environment_rules"] = bound.environment_rules
-        slot = make_er_slot(reference_method_binding(self.name)[0])
+        slot = make_er_slot(reference_method_binding(self.name)[0], **self._params)
         controller = None
         if self.name == "reflexion":
             # The source writer has benchmark-specific prompts, not a generic
@@ -322,6 +327,8 @@ class _ReferenceMethod(MemoryMethod):
         state = {"method": self.name, "completed_trials": self._next_trial,
                  "total_trials": self._config.total_trials, "stopped": self._stopped,
                  "history": list(self._history)}
+        if self._params:
+            state["params"] = dict(self._params)
         state["state"] = (self._controller.snapshot() if self._controller is not None
                           else {"memory": self._slot.build_section()})
         return deepcopy(state)

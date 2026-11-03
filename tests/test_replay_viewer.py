@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -90,15 +91,19 @@ global.document={getElementById:get,createElement:tag=>new Element(tag),hidden:f
   querySelectorAll:()=>['phase-observe','phase-act','phase-feedback','phase-end'].map(get),addEventListener(){}};
 get('replay-data').textContent=JSON.stringify(input.data);get('speed').value='1600';
 eval(input.script);
+function links(element){return [...(element.tagName==='A'?[{href:element.href,download:element.download||null,
+  target:element.target||null,rel:element.rel||null}]:[]),...element.children.flatMap(links)];}
 function snapshot(){return {states:Object.fromEntries(get('evaluation-state').children.map(r=>r.children.map(c=>c.textContent))),
   heading:get('action-heading').textContent,action:get('action-code').textContent,feedback:get('feedback-text').textContent,
   outcome_hidden:get('outcome').hidden,outcome:get('outcome').textContent,after_disabled:get('after').disabled,memory_after_hidden:get('memory-state-after-wrap').hidden,
   metadata:get('metadata').textContent,error:get('error').textContent,
   images:get('observation').children.filter(child=>child.tagName==='IMG').map(child=>child.src),
+  links:Object.fromEntries(['observation','feedback-text','raw-actor-record','memory-state-pre','memory-state-after'].map(id=>[id,links(get(id))])),
   mode:get('observation-mode').textContent};}
 const out=[snapshot()];
 for(const request of input.requests){
-  if(request.trial!==undefined)get('timeline').children[request.trial].children[0].events.click();
+  if(request.run!==undefined)get('run-select').events.change({target:{value:String(request.run)}});
+  else if(request.trial!==undefined)get('timeline').children[request.trial].children[0].events.click();
   else get('progress').events.input({target:{value:String(request.position)}});
   out.push(snapshot());
 }
@@ -437,6 +442,109 @@ process.stdout.write(JSON.stringify(out));
         self.assertFalse(blocked.exists())
         self.assertEqual(sentinel.read_bytes(), b"existing")
 
+    def test_large_raw_text_and_states_are_exact_deduplicated_sidecars(self):
+        text = "完整原文\n" * 2000
+        state = {"entries": [text], "unchanged": [None, False, 1.25]}
+        row = self.payload["cases"][0]["trials"][0]
+        row.update(actor_trajectory=text, policy_trajectory=trace(initial=text, observation=text),
+                   context=text, system_context=text, user_context=text,
+                   memory_state_pre=state, memory_state=state,
+                   controller_state_pre=state, controller_state=state)
+        small = "x" * (16 * 1024 - 1)
+        self.payload["cases"][0]["trials"][1]["actor_trajectory"] = small
+        self.save()
+        original = self.path.read_bytes()
+        original_view = replay_data([self.run])
+        output = export_replay([self.run], self.root / "long #1%.html")
+        data = json.loads(output.read_text(encoding="utf-8").split('id="replay-data">', 1)[1]
+                          .split("</script>", 1)[0])
+        trial = data["runs"][0]["cases"][0]["trials"][0]
+        frame = trial["frames"][0]
+        text_raw = text.encode("utf-8")
+        json_raw = json.dumps(state, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        for raw, format_name, suffix in ((text_raw, "text", ".txt"), (json_raw, "json", ".json")):
+            digest = hashlib.sha256(raw).hexdigest()
+            ref = data["external_texts"][digest]
+            self.assertEqual(ref, {"url": "long%20%231%25.assets/" + digest + suffix,
+                                   "sha256": digest, "bytes": len(raw), "format": format_name})
+            saved = self.root / "long #1%.assets" / (digest + suffix)
+            self.assertEqual(saved.read_bytes(), raw)
+        text_ref = {"text_ref": hashlib.sha256(text_raw).hexdigest()}
+        state_ref = {"text_ref": hashlib.sha256(json_raw).hexdigest()}
+        self.assertEqual(trial["raw_actor_trajectory"], text_ref)
+        self.assertEqual(trial["initial_observation"], text_ref)
+        self.assertEqual(frame["before_observation"], text_ref)
+        self.assertEqual(frame["after_observation"], text_ref)
+        for field in ("state_pre", "state_after", "controller_state_pre", "controller_state"):
+            self.assertEqual(trial["memory"][field], state_ref)
+        for field in ("context", "system_context", "user_context"):
+            self.assertEqual(trial["memory"][field], text)
+        self.assertEqual(frame["action"], "click[item]")
+        self.assertEqual(data["runs"][0]["cases"][0]["trials"][1]["initial_observation"], "initial")
+        self.assertEqual(data["runs"][0]["cases"][0]["trials"][1]["raw_actor_trajectory"], small)
+        self.assertEqual(len(list((self.root / "long #1%.assets").iterdir())), 2)
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual(replay_data([self.run]), original_view)
+        html = output.read_text(encoding="utf-8")
+        embedded = html.split('id="replay-data">', 1)[1].split("</script>", 1)[0]
+        data["runs"].append(deepcopy(data["runs"][0]))
+        data["runs"][1]["cases"][0]["trials"] = [data["runs"][1]["cases"][0]["trials"][1]]
+        before, after, next_trial, next_run = self.viewer_positions(
+            [{"position": 1}, {"trial": 1}, {"run": 1}], html=html.replace(embedded, json.dumps(data), 1))
+        for field in ("observation", "raw-actor-record", "memory-state-pre"):
+            self.assertEqual(len(before["links"][field]), 2)
+            open_link, download_link = before["links"][field]
+            self.assertEqual((open_link["target"], open_link["rel"]), ("_blank", "noopener noreferrer"))
+            self.assertEqual(open_link["href"], download_link["href"])
+            self.assertIsNotNone(download_link["download"])
+        self.assertEqual(len(after["links"]["feedback-text"]), 2)
+        self.assertEqual(len(after["links"]["memory-state-after"]), 2)
+        self.assertEqual(after["action"], "click[item]")
+        for shown in (next_trial, next_run):
+            self.assertTrue(all(not links for links in shown["links"].values()))
+        digest = text_ref["text_ref"]
+        for update in ({"url": "https://example.org/" + digest + ".txt"},
+                       {"url": "..%2Foutside.assets/" + digest + ".txt"},
+                       {"url": "nested%5Coutside.assets/" + digest + ".txt"},
+                       {"url": data["external_texts"][digest]["url"] + "\n"},
+                       {"sha256": "0" * 64}, {"format": "json"}):
+            untrusted = deepcopy(data)
+            untrusted["external_texts"][digest].update(update)
+            with self.subTest(reference=update):
+                shown = self.viewer_positions([], html=html.replace(embedded, json.dumps(untrusted), 1))[0]
+                self.assertEqual(shown["links"]["observation"], [])
+                self.assertEqual(shown["links"]["raw-actor-record"], [])
+
+    def test_automatic_text_assets_are_exclusive_and_cleaned_up_on_failure(self):
+        self.payload["cases"][0]["trials"][0]["actor_trajectory"] = "x" * (16 * 1024)
+        self.save()
+        output = self.root / "long.html"
+        assets = self.root / "long.assets"
+        assets.mkdir()
+        sentinel = assets / "keep"
+        sentinel.write_bytes(b"existing")
+        with self.assertRaises(FileExistsError):
+            export_replay([self.run], output)
+        self.assertFalse(output.exists())
+        self.assertEqual(sentinel.read_bytes(), b"existing")
+
+        failed = self.root / "failed.html"
+        original_open = Path.open
+        def fail_html_open(path, *args, **kwargs):
+            if path == failed.resolve():
+                raise OSError("injected report write failure")
+            return original_open(path, *args, **kwargs)
+        with patch.object(Path, "open", fail_html_open):
+            with self.assertRaisesRegex(OSError, "injected report"):
+                export_replay([self.run], failed)
+        self.assertFalse(failed.exists())
+        self.assertFalse((self.root / "failed.assets").exists())
+        with patch("vrlbench.replay_viewer._MAX_REPORT_BYTES", 1):
+            with self.assertRaisesRegex(ValueError, "Replay exceeds 64 MiB"):
+                export_replay([self.run], failed)
+        self.assertFalse(failed.exists())
+        self.assertFalse((self.root / "failed.assets").exists())
+
     def test_legacy_shared_trial_snapshots_require_explicit_source_after_moving(self):
         source = self.root / "retry"
         source.mkdir()
@@ -477,7 +585,9 @@ process.stdout.write(JSON.stringify(out));
         self.save()
 
         before = self.path.read_bytes(), source_path.read_bytes()
-        data = replay_data([self.run])
+        # Report output size does not limit loading an otherwise valid source.
+        with patch("vrlbench.replay_viewer._MAX_REPORT_BYTES", 1):
+            data = replay_data([self.run])
         trial = data["runs"][0]["cases"][0]["trials"][0]
         self.assertEqual(len(data["runs"]), 1)  # Source assets do not add a second displayed run.
         self.assertEqual(base64.b64decode(trial["initial_image"].split(",", 1)[1]), raw)
@@ -535,6 +645,7 @@ process.stdout.write(JSON.stringify(out));
         self.assertIn("\\u003c/script\\u003e", html)
         embedded = html.split('id="replay-data">', 1)[1].split("</script>", 1)[0]
         self.assertEqual(json.loads(embedded)["runs"][0]["cases"][0]["trials"][0]["memory"]["user_context"], value)
+        self.assertFalse((self.root / "replay.assets").exists())
         with self.assertRaises(FileExistsError):
             export_replay([self.run], output)
 
@@ -567,6 +678,7 @@ process.stdout.write(JSON.stringify(out));
 
     def test_cli_does_not_import_model_runtime_or_load_plugins(self):
         self.payload["config"]["memory"]["factory"] = {"entrypoint": "missing_module:create"}
+        self.payload["cases"][0]["trials"][0]["actor_trajectory"] = "x" * (16 * 1024)
         self.save()
         output = self.root / "replay.html"
         script = ("import sys\n"
@@ -579,6 +691,8 @@ process.stdout.write(JSON.stringify(out));
         result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(output.exists())
+        self.assertIn("Keep this asset directory beside the HTML file:", result.stdout)
+        self.assertTrue((self.root / "replay.assets").is_dir())
 
 
 if __name__ == "__main__":

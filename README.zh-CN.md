@@ -100,6 +100,8 @@ VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。
 
 选择任务环境，配置模型与记忆方法，并明确填写总尝试次数 `trials` 和每轮行动上限 `max_environment_steps`，再用 `simulate` → `inspect` → `compare` 完成在线计算机操作任务的评测。
 
+内置仿真统一使用 OpenHands 执行动作；VRL-Bench 管理试错轮次、环境、记忆、预算和评估，每轮启动新的 OpenHands 会话。模拟器使用 Python 3.12+，模型需支持工具调用；OSWorld 还需要视觉能力。原生环境可保留各自的 Python 依赖，通过独立进程接入。
+
 | 环境 | 任务类型 | 安装与配置 |
 |---|---|---|
 | MiniWoB | 浏览器与界面操作 | [Python 3.12 + Chromium](docs/QUICKSTART.md#use-miniwob) · [示例配置](examples/configs/miniwob_retry.json) |
@@ -108,6 +110,8 @@ VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。
 | OSWorld | 可重置虚拟机中的桌面任务 | [虚拟机与视觉模型](docs/QUICKSTART.md#use-osworld) · [示例配置](examples/configs/osworld_retry.json) |
 | 自己的任务 | 自有智能体与环境 | [接入任务适配器](docs/DEVELOPMENT.md#add-a-task-environment) |
 
+首次运行建议从 **MiniWoB** 开始：它运行真实浏览器任务，不需要商品库、搜索索引、自部署网站或虚拟机。按[安装指南](docs/QUICKSTART.md#use-miniwob)准备 Python 3.12、Chromium 和匹配的 ChromeDriver。WebShop 即使只选少量任务，也要准备完整商品库与搜索索引，见其[独立教程](docs/QUICKSTART.md#webshop-setup)。
+
 克隆仓库：
 
 ```bash
@@ -115,33 +119,30 @@ git clone https://github.com/vrl-bench/vrlbench.git
 cd vrlbench
 ```
 
-按上表中的安装指南准备所选环境，激活对应的 Python 环境，再安装 SDK：
+按上表中的安装指南准备所选环境，激活模拟器的 Python 3.12+ 环境，再安装运行依赖：
 
 ```bash
-python -m pip install -e '.[runtime]'
+python -m pip install -e '.[runtime,openhands]'
 ```
 
-下面以 **WebShop** 展示共同流程。在三份示例配置中设置相同的模型，并通过环境变量提供 API key。配置选择两个购物目标，每个目标最多尝试六轮。运行会实际调用模型，可能产生 API 费用。
+准备好 MiniWoB 后，在三份示例配置中设置相同的模型，并通过环境变量提供 API key。示例选择一个 `click-test` 任务，明确设置总尝试次数和每轮行动上限。**示例已开启页面录制**，首次运行就会保存可回放的原生截图。运行会实际调用模型，可能产生 API 费用。
 
 先完成无记忆 Retry，再运行保留近期失败轨迹的方法与 Reflexion：
 
 ```bash
-vrlbench simulate --config examples/configs/webshop_retry.json
-vrlbench simulate --config examples/configs/webshop_trace_memory.json
-vrlbench simulate --config examples/configs/webshop_reflexion.json
-vrlbench inspect runs/webshop_reflexion --case sample_0000
-vrlbench compare runs/webshop_retry runs/webshop_trace_memory runs/webshop_reflexion
+vrlbench simulate --config examples/configs/miniwob_retry.json
+vrlbench simulate --config examples/configs/miniwob_trace_memory.json
+vrlbench simulate --config examples/configs/miniwob_reflexion.json
+vrlbench inspect runs/miniwob_reflexion
+vrlbench replay runs/miniwob_retry runs/miniwob_trace_memory runs/miniwob_reflexion
+vrlbench compare runs/miniwob_retry runs/miniwob_trace_memory runs/miniwob_reflexion
 ```
 
-记忆方法复用 Retry 已完成的首轮尝试，并保持任务与预算一致。检查各轮上下文和动作，观察不同方法怎样利用失败反馈，再比较成功率、失败恢复和解决任务所需的尝试数。通过[配对统计分析](docs/STATISTICS.md)进一步判断差异及其不确定性。
+记忆方法复用 Retry 已完成的首轮尝试，并保持任务与预算一致。检查各轮上下文和动作，观察不同方法怎样利用失败反馈，再比较成功率、失败恢复和解决任务所需的尝试数。
 
-**回放已保存的运行。**
+打开生成的 `runs/miniwob_retry/replay.html`，逐步查看页面、动作、记忆与预算。回放只读取已保存的记录，不会新增模型调用。首轮成功时，各条件都会停止，不再生成记忆；研究记忆效果时，应扩大任务范围，再进行[配对统计分析](docs/STATISTICS.md)。
 
-```bash
-vrlbench replay runs/webshop_reflexion
-```
-
-回放只读取已保存的记录，不会新增模型调用。如需查看原生页面快照，在运行前[启用页面录制](docs/QUICKSTART.md#inspect-and-compare)。
+**换上自己的记忆。** [复制示例实现，在原配置中修改记忆工厂](docs/DEVELOPMENT.md#bring-your-own-memory)，继续用同样的命令评估新版本，并与原来的结果比较。
 
 <details>
 <summary>案例：对照六轮实验中的记忆、动作和结果</summary>

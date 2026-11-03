@@ -23,8 +23,8 @@ def canonical_er_name(name: str) -> str:
     return key
 
 
-def make_er_slot(name: str) -> ERSlot:
-    return _SLOTS[canonical_er_name(name)]()
+def make_er_slot(name: str, **params) -> ERSlot:
+    return _SLOTS[canonical_er_name(name)](**params)
 
 
 __all__ = [

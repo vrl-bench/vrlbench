@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from vrlbench.environments.osworld import OSWorldSession, _action
-from vrlbench.environments.interactive import make_actor
+from test_interactive import make_actor
 
 
 PNG_3_BY_2 = base64.b64decode(
@@ -156,7 +156,7 @@ class OSWorldAdapterTests(unittest.TestCase):
         self.assertEqual(resolved.workload.params["env_kwargs"]["path_to_vm"], str(Path(self.temporary.name) / "vm/image.vmx"))
         with self.assertRaisesRegex(ValueError, "provisioned VM"):
             replace(spec, workload=replace(spec.workload, params={})).validate()
-        with self.assertRaisesRegex(ValueError, "screenshot"):
+        with self.assertRaisesRegex(ValueError, "max_total_tokens"):
             replace(spec, max_total_tokens=100).validate()
         with self.assertRaisesRegex(ValueError, "completed SDK"):
             plan(replace(spec, shared_t1_dir=self.temporary.name))
@@ -358,6 +358,7 @@ class OSWorldAdapterTests(unittest.TestCase):
                               (f"```python\n{program}\n```", program),
                               ("print(' DONE ')", "print(' DONE ')"),
                               ("message = '```DONE```'", "message = '```DONE```'"),
+                              ("pass", "pass"),
                               ("DONE", "DONE"), ("FAIL", "FAIL"), ("WAIT", "WAIT")):
             with self.subTest(raw=raw):
                 self.assertEqual(session.parse_response(raw), expected)
@@ -366,6 +367,10 @@ class OSWorldAdapterTests(unittest.TestCase):
         for invalid in ("return", "break", "continue"):
             with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "Python syntax error"):
                 session.parse_response(program + "\n" + invalid)
+        for raw in ('{"click": [1810, 15]}', '{"done": false}', '[1, 2]',
+                    '(1, 2)', '"click the button"', '42', 'True', 'None'):
+            with self.subTest(raw=raw), self.assertRaisesRegex(ValueError, "data literals"):
+                session.parse_response(raw)
         for raw in (code, f"```python\n{program}",
                     f"I will click.\n```python\n{program}\n```"):
             with self.subTest(raw=raw), self.assertRaisesRegex(ValueError, "fully closed Python code block"):
@@ -376,7 +381,8 @@ class OSWorldAdapterTests(unittest.TestCase):
         session = self.session()
         calls = []
         program = "import pyautogui\npyautogui.click(1, 2)"
-        responses = iter([program + "\nDONE", f"```python\n{program}\n```"])
+        rejected = '{"click": [1810, 15]}'
+        responses = iter([rejected, f"```python\n{program}\n```"])
 
         def model(prompt, **kwargs):
             calls.append((prompt, kwargs))
@@ -400,9 +406,9 @@ class OSWorldAdapterTests(unittest.TestCase):
         self.assertEqual(metadata["environment_steps"], 1)
         self.assertEqual(self.env.actions[0][0], program)
         self.assertEqual(len(self.env.actions), 1)
-        self.assertIn("not mixed with Python", calls[1][0])
+        self.assertIn("data literals", calls[1][0])
         self.assertIn("actions remaining: 1", calls[1][0])
-        self.assertEqual(metadata["invalid_action_events"][0]["raw_response"], program + "\nDONE")
+        self.assertEqual(metadata["invalid_action_events"][0]["raw_response"], rejected)
         self.assertEqual(actor.get_policy_evidence()["steps"][0]["action"], program)
         self.assertEqual(metadata["trial_close_reason"], "ao_horizon")
         self.assertEqual(len(metadata["screenshots"]), 2)

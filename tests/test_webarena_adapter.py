@@ -229,7 +229,7 @@ class WebArenaAdapterTests(unittest.TestCase):
                      "requires the native libwebarena/runtime dependencies")
 class NativeJudgeTests(unittest.TestCase):
     def test_native_action_rejection_is_charged_without_browser_dispatch(self):
-        from vrlbench.environments.interactive import make_actor
+        from test_interactive import make_actor
 
         sites = {key: f"http://{key.lower()}.invalid" for key in
                  ("REDDIT", "SHOPPING", "SHOPPING_ADMIN", "GITLAB", "WIKIPEDIA", "MAP", "HOMEPAGE")}

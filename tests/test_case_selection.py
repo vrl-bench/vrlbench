@@ -17,11 +17,14 @@ from vrlbench.results import SimulationResult
 
 def recorded_fixture(spec):
     """A complete local record fixture for preflight, not benchmark evidence."""
-    cases = [
-        {"case_id": str(index), "task": "fixture", "resource_usage": {},
-         "trials": [{"trial": 0, "success": True, "trajectory": "fixture"}]}
-        for index, _ in enumerate(spec.workload.cases)
-    ]
+    from vrlbench.worker import expected_case_ids
+    cases = [{"case_id": identity, "task": "fixture", "resource_usage": {},
+              "trials": [{"trial": 0, "success": True, "trajectory": "fixture",
+                          "trial_metadata": {"task": "fixture", "case_identity": identity,
+                              "max_environment_steps": spec.max_environment_steps,
+                              "actor_llm_usage": {"api_calls": 0, "total_tokens": 0,
+                                                  "provider_usage_complete": True}}}]}
+             for identity in sorted(expected_case_ids(spec.to_dict()["benchmark"]))]
     return SimulationResult({"status": "complete", "config": spec.to_dict(),
                              **aggregate_cases(cases, spec.trials), "cases": cases})
 
@@ -44,8 +47,8 @@ class CaseSelectionCompatibility(unittest.TestCase):
                                     memory=MemorySpec("reflexion"), shared_t1_dir=str(root))
                 before = candidate.to_dict()
                 self.assertEqual(plan(candidate)["model_calls_executed"], 0)
-                from vrlbench.backends import _validate_sdk_shared_source
-                _validate_sdk_shared_source(candidate.to_dict())
+                from vrlbench._shared_t1 import load_shared_first_trials
+                load_shared_first_trials(candidate.to_dict())
                 self.assertEqual(candidate.to_dict(), before)
                 self.assertEqual(compare_results([recorded_fixture(source), recorded_fixture(candidate)])
                                  ["paired_effects"][0]["sr_difference_pp"], 0)
@@ -72,7 +75,7 @@ class CaseSelectionCompatibility(unittest.TestCase):
             replace(source, model=replace(source.model, name="other-model")),
             replace(source, model=replace(source.model, api_key_env="OTHER_API_KEY")),
             replace(source, runtime_env={"TASK_MODE": "other"}),
-            replace(source, workload=replace(source.workload, params={"max_actor_steps": 2})),
+            replace(source, workload=replace(source.workload, params={"capture_observations": True})),
             replace(source, max_environment_steps=16),
         ]
         for target in variants:

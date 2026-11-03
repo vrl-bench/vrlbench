@@ -11,14 +11,29 @@ def comparable_actor(value: Any) -> dict[str, Any]:
     """Compare effective actor settings, treating older records as ReAct."""
     from .specs import ActorSpec, FactorySpec, _construct, _json_object
 
-    actor = ActorSpec() if value is None else _construct(ActorSpec, value)
+    # Missing actor is a historical ReAct record, not the current default.
+    actor = ActorSpec("react") if value is None else _construct(ActorSpec, value)
     params = deepcopy(_json_object(actor.params, "actor.params"))
     if actor.name == "openhands":
         params.setdefault("max_output_tokens", 1024)
         if "condenser" in params:
             condenser = _construct(FactorySpec, params["condenser"])
             params["condenser"] = {"entrypoint": condenser.entrypoint, "kwargs": condenser.kwargs}
-    return {"name": actor.name, "params": params}
+    result = {"name": actor.name, "params": params}
+    if actor.factory is not None:
+        factory = _construct(FactorySpec, actor.factory) if isinstance(actor.factory, Mapping) else actor.factory
+        result["factory"] = {"entrypoint": factory.entrypoint, "kwargs": factory.kwargs}
+    return result
+
+
+def recorded_actor_identity(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """Read the SDK version or factory source used by the actual actor."""
+    identities = [{key: row[key] for key in ("name", "sdk_version", "source_sha256") if key in row}
+                  for row in ((payload.get("identity") or {}).get("plugins") or [])
+                  if isinstance(row, Mapping) and row.get("role") == "actor"]
+    if len({json.dumps(row, sort_keys=True) for row in identities}) > 1:
+        raise ValueError("results have contradictory actor implementation identities")
+    return identities[0] if identities else None
 
 
 def recorded_condenser_identity(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:

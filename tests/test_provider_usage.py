@@ -18,6 +18,36 @@ from vrlbench.provider_usage import JOURNAL_NAME, ProviderUsageJournal, merge_pr
 
 
 class ProviderJournalTests(unittest.TestCase):
+    def test_completion_limit_is_reported_without_response_text(self):
+        from types import SimpleNamespace
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            journal = ProviderUsageJournal(root)
+            for reason, truncated in (("length", True), ("stop", False), (None, None)):
+                response = SimpleNamespace(choices=[SimpleNamespace(finish_reason=reason,
+                                            message=SimpleNamespace(content="private response"))])
+                journal.response(journal.begin(), response)
+                event = json.loads(journal.path.read_text().splitlines()[-1])
+                self.assertEqual(event["finish_reason"], reason)
+                self.assertIs(event["output_truncated"], truncated)
+            self.assertNotIn("private response", journal.path.read_text())
+
+    def test_api_error_keeps_status_and_code_without_private_body(self):
+        class Error(RuntimeError):
+            status_code = 400
+            body = {"error": {"code": "context_length_exceeded", "message": "private prompt"}}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            journal = ProviderUsageJournal(root)
+            journal.failure(journal.begin(), Error("private error message"))
+            event = json.loads((root / JOURNAL_NAME).read_text().splitlines()[-1])
+            self.assertEqual(event["http_status"], 400)
+            self.assertEqual(event["error_code"], "context_length_exceeded")
+            self.assertNotIn("private", (root / JOURNAL_NAME).read_text())
+            self.assertIsNone(read_provider_usage(root)["total_tokens"])
+
     def test_pending_request_keeps_known_subtotal_and_contains_no_content(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

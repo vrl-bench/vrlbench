@@ -60,7 +60,6 @@ class InteractiveActor:
     def __init__(self, session: Session, *, model: str,
                  max_environment_steps: int, artifact_dir: str | Path,
                  capture_observations: bool = False,
-                 llm_fn: Callable[..., str] | None = None,
                  on_progress: Callable[[dict[str, Any]], None] | None = None) -> None:
         from vrlbench.runtime.budget import EnvironmentInteractionLedger
 
@@ -68,13 +67,9 @@ class InteractiveActor:
             raise ValueError("max_environment_steps must be a positive integer")
         if type(capture_observations) is not bool:
             raise ValueError("capture_observations must be a boolean")
-        self.llm_usage_instrumented = llm_fn is None
-        if llm_fn is None:
-            from vrlbench.runtime.llm import complete
-            llm_fn = complete
+        self.llm_usage_instrumented = True
         self.session = session
         self.model = model
-        self.llm_fn = llm_fn
         self.artifact_dir = Path(artifact_dir)
         self.capture_observations = capture_observations
         self.on_progress = on_progress
@@ -287,45 +282,8 @@ class InteractiveActor:
         return observation, text
 
     def __call__(self) -> str:
-        # The loop binds memory immediately before calling the actor. A
-        # controller may have prepared the reset state earlier, without it.
-        if self.llm_usage_instrumented:
-            from vrlbench.runtime import llm
-            self.system_context, self.user_context = llm.get_context(), llm.get_user_context()
-        already_prepared = self.prepared is not None
-        prepared = self.prepare_trial()
-        if already_prepared:
-            self._checkpoint("reset")
-        assert self.prepared is not None and self.evidence is not None
-        observation = self.prepared.observation
-        history = f"Task: {prepared['task']}\nObservation:\n{prepared['initial_observation']}"
-        while self.ledger.remaining_steps:
-            prompt = (f"{history}\n\nEnvironment actions remaining: {self.ledger.remaining_steps}.\n"
-                      "Return exactly one action in the environment's action format.")
-            self.ledger.charge_actor_turn()
-            kwargs: dict[str, Any] = {"model": self.model, "system": self.session.system_prompt,
-                                      "max_tokens": 1024, "retry_on_error": False}
-            if observation.image is not None:
-                kwargs["images"] = [observation.image]
-            self.messages.append(f"[USER/action_prompt]\n{prompt}")
-            raw = self.llm_fn(prompt, **kwargs)
-            if not isinstance(raw, str):
-                raise TypeError("actor model must return text")
-            self.messages.append(f"[ASSISTANT/action]\n{raw}")
-            try:
-                action = self._action_from_response(raw)
-            except ValueError as exc:
-                feedback = self._reject_action(raw, str(exc))
-                history += f"\nRejected response: {raw}\n{feedback}"
-                continue
-            observation, text = self._dispatch_action(action, raw_response=raw)
-            history += f"\nAction: {action}\nObservation:\n{text}"
-            if self.close_reason != "running":
-                break
-        if self.close_reason == "running":
-            self._finish(terminated=False, truncated=True)
-        outcome = "SUCCESS" if self.success else "FAIL"
-        return f"{history}\nSTATUS: {outcome}\nClose reason: {self.close_reason}"
+        """Execute one trial using an actor backend's own interaction loop."""
+        raise NotImplementedError("actor backends must implement __call__")
 
     def get_trial_metadata(self) -> dict[str, Any]:
         if self.evidence is None or self.close_reason == "running":
@@ -367,35 +325,33 @@ class InteractiveActor:
 
 def make_actor(session: Session, *, model: str, max_environment_steps: int,
                artifact_dir: str | Path, capture_observations: bool = False,
-               llm_fn: Callable[..., str] | None = None,
                on_progress: Callable[[dict[str, Any]], None] | None = None,
-               actor_name: str = "react", actor_params: Mapping[str, Any] | None = None,
-               sdk_model_config: Mapping[str, Any] | None = None,
+               actor_name: str = "openhands", actor_params: Mapping[str, Any] | None = None,
+               actor_factory: Callable[..., Any] | None = None,
+               model_config: Mapping[str, Any] | None = None,
                sdk_llm_factory: Callable[..., Any] | None = None,
                sdk_request_observer: Any = None) -> InteractiveActor:
-    if actor_name == "openhands":
-        if llm_fn is not None:
-            raise ValueError("OpenHands uses its native SDK LLM, not llm_fn")
-        from vrlbench.actors.openhands import OpenHandsActor
+    common = dict(session=session, model=model, max_environment_steps=max_environment_steps,
+                  artifact_dir=artifact_dir, capture_observations=capture_observations,
+                  on_progress=on_progress, actor_params=dict(actor_params or {}))
+    if actor_factory is not None:
+        actor = actor_factory(**common, model_config=dict(model_config or {}))
+        if not isinstance(actor, InteractiveActor):
+            raise TypeError("actor.factory must return an InteractiveActor subclass")
+        return actor
+    if actor_name != "openhands":
+        raise ValueError("the built-in actor is openhands; custom actors require actor.factory")
+    from vrlbench.actors.openhands import OpenHandsActor
 
-        return OpenHandsActor(
-            session, model=model, max_environment_steps=max_environment_steps,
-            artifact_dir=artifact_dir, capture_observations=capture_observations,
-            on_progress=on_progress, actor_params=actor_params,
-            sdk_model_config=sdk_model_config, sdk_llm_factory=sdk_llm_factory,
-            sdk_request_observer=sdk_request_observer)
-    if actor_name != "react":
-        raise ValueError(f"unknown actor {actor_name!r}; choose react or openhands")
-    if actor_params:
-        raise ValueError("react actor does not accept actor_params")
-    return InteractiveActor(session, model=model, max_environment_steps=max_environment_steps,
-                            artifact_dir=artifact_dir, capture_observations=capture_observations,
-                            llm_fn=llm_fn, on_progress=on_progress)
+    return OpenHandsActor(**common, sdk_model_config=model_config,
+                          sdk_llm_factory=sdk_llm_factory,
+                          sdk_request_observer=sdk_request_observer)
 
 
 def run_cases(spec: Mapping[str, Any], runtime: Any,
               make_session: Callable[[Mapping[str, Any], dict[str, Any]], Session], *,
-              cases: list[Mapping[str, Any]] | None = None) -> list[dict[str, Any]]:
+              cases: list[Mapping[str, Any]] | None = None,
+              actor_factory: Callable[..., Any] | None = None) -> list[dict[str, Any]]:
     """Run explicitly selected cases with fresh memory and reliable cleanup."""
     from vrlbench._shared_t1 import load_shared_first_trials
 
@@ -451,9 +407,10 @@ def run_cases(spec: Mapping[str, Any], runtime: Any,
                                artifact_dir=artifact_dir,
                                capture_observations=params.get("capture_observations", False),
                                on_progress=checkpoint_progress,
-                               actor_name=str(spec.get("actor", {}).get("name", "react")),
+                               actor_name=str(spec.get("actor", {}).get("name", "openhands")),
                                actor_params=spec.get("actor", {}).get("params", {}),
-                               sdk_model_config=spec.get("model", {}))
+                               actor_factory=actor_factory,
+                               model_config=spec.get("model", {}))
             if shared_trial is not None:
                 # Check the next fresh reset against the recorded first trial too.
                 actor.identity = shared_trial["trial_metadata"]["case_identity"]

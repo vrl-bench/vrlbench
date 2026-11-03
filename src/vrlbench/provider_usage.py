@@ -10,6 +10,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 from threading import Lock
 import time
 from typing import Any, Mapping
@@ -45,6 +46,23 @@ def _usage(response: Any) -> tuple[dict[str, int | None], bool]:
         counts["total_tokens"] = prompt + completion
     return ({field: None for field in TOKEN_FIELDS} if invalid else counts,
             not invalid and counts["total_tokens"] is not None)
+
+
+def provider_error_details(error: BaseException) -> dict[str, Any]:
+    """Keep actionable API status/code, never arbitrary messages or bodies."""
+    details: dict[str, Any] = {"error_type": type(error).__name__}
+    status = getattr(error, "status_code", None)
+    if type(status) is int and 100 <= status <= 599:
+        details["http_status"] = status
+    code = getattr(error, "code", None)
+    body = getattr(error, "body", None)
+    if code is None and isinstance(body, Mapping):
+        nested = body.get("error", body)
+        if isinstance(nested, Mapping):
+            code = nested.get("code")
+    if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", code):
+        details["error_code"] = code
+    return details
 
 
 class ProviderUsageJournal:
@@ -86,12 +104,21 @@ class ProviderUsageJournal:
 
     def response(self, request_id: str, response: Any) -> None:
         usage, complete = _usage(response)
+        choices = response.get("choices") if isinstance(response, Mapping) else getattr(response, "choices", None)
+        first = choices[0] if choices else None
+        reason = first.get("finish_reason") if isinstance(first, Mapping) else getattr(first, "finish_reason", None)
+        # Keep only the protocol label, never arbitrary provider text. Missing
+        # metadata is unknown, not evidence that the output completed normally.
+        if not isinstance(reason, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,80}", reason) is None:
+            reason = None
         self._append({"event": "request_completed", "request_id": request_id,
-                      "usage": usage, "provider_usage_complete": complete})
+                      "usage": usage, "provider_usage_complete": complete,
+                      "finish_reason": reason,
+                      "output_truncated": reason == "length" if reason is not None else None})
 
     def failure(self, request_id: str, error: BaseException) -> None:
         self._append({"event": "request_failed", "request_id": request_id,
-                      "error_type": type(error).__name__})
+                      **provider_error_details(error)})
 
 
 def read_provider_usage(output_dir: Path) -> dict[str, Any] | None:

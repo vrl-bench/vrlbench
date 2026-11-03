@@ -1,1 +1,1 @@
-"""Optional actor integrations; importing this package loads no external SDK."""
+"""Actor backends; importing this package loads no external SDK."""

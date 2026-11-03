@@ -223,7 +223,7 @@ def prepare_shared_t1(*, trajectory: str, policy_trajectory: str | None=None, ac
         expected_actor_hash = hashlib.sha256(actor_trajectory.encode('utf-8')).hexdigest()
         if shared_trial_metadata.get('actor_trajectory_sha256') != expected_actor_hash:
             raise ValueError('shared T1 raw Actor trajectory hash is inconsistent')
-    if benchmark == 'miniwob' and shared_trial_metadata.get('actor_profile') == 'react_batch':
+    if formal_online_benchmark:
         memory_actor_trajectory, memory_transport = intern_repeated_policy_observations(actor_trajectory, policy_trajectory)
         shared_trial_metadata['memory_actor_trajectory_transport'] = memory_transport
     else:
@@ -387,8 +387,10 @@ def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], 
         controller_state_pre = active_controller.snapshot() if active_controller else None
         _llm.set_context(context)
         _llm.set_user_context(user_context)
+        actor_usage_before = usage_ledger.snapshot()
         try:
             trajectory = actor()
+            actor_usage = usage_ledger.delta(actor_usage_before)
         finally:
             _llm.set_context('')
             _llm.set_user_context('')
@@ -431,10 +433,9 @@ def _run_episode_impl(actor: Callable[[], str], manager: Callable[[str], bool], 
             raise ValueError('actor protocol failure cannot contribute empty policy evidence')
         _observe_controller_trial_task(active_controller, trial_metadata.get('task') or (parse_policy_trajectory(policy_trajectory) or {}).get('task'))
         trial_metadata.update({'policy_ao_steps': policy_ao_steps, 'policy_evidence_schema_version': 1 if policy_trajectory_source == 'executed_actor_ao_hook' else None, 'policy_trajectory_sha256': hashlib.sha256(policy_trajectory.encode('utf-8')).hexdigest(), 'policy_trajectory_source': policy_trajectory_source})
-        # Keep the actor prefix separate from the method's post-failure update.
-        # Shared T1 imports this usage, then charges the new method's own update.
-        trial_metadata['actor_llm_usage'] = usage_ledger.delta(usage_before)
-        if benchmark == 'miniwob' and trial_metadata.get('actor_profile') == 'react_batch':
+        # Shared T1 imports only actor execution, not scheduling or memory calls.
+        trial_metadata['actor_llm_usage'] = actor_usage
+        if formal_online_benchmark:
             memory_actor_trajectory, memory_transport = intern_repeated_policy_observations(actor_trajectory, policy_trajectory)
             trial_metadata['memory_actor_trajectory_transport'] = memory_transport
         else:

@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
                                   help="simulate a memory system on a workload (online model calls may incur charges)")
     execute.add_argument("--config", type=Path, required=True)
     execute.add_argument("--output-dir", type=Path, help="override the config's run directory")
-    execute.add_argument("--actor", choices=["react", "openhands"], help="override the config's actor")
+    execute.add_argument("--actor", choices=["openhands"], help="use the built-in OpenHands actor")
     execute.add_argument("--plan", action="store_true", help="validate inputs without importing plugins or calling a model")
     inspect = commands.add_parser("inspect", help="read recorded memory contexts, actions, and outcomes; no execution")
     inspect.add_argument("path", type=Path, help="evaluation.json or its run directory")
@@ -55,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
             path = export_replay(args.paths, output, case_id=args.case,
                                  external_images=args.external_images)
             print(f"Replay saved: {path}")
+            assets = path.with_name(path.stem + ".assets")
+            if assets.is_dir():
+                print(f"Keep this asset directory beside the HTML file: {assets}")
             print("Open this HTML file in a browser. No model or environment was executed.")
             return 0
         if args.command == "inspect":

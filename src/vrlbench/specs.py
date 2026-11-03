@@ -81,20 +81,31 @@ class MemorySpec:
     name: str = "retry"
     factory: FactorySpec | None = None
     method_factory: FactorySpec | None = None
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ActorSpec:
     """The action-producing agent, independent of its model and memory method."""
 
-    name: str = "react"
+    name: str = "openhands"
     params: dict[str, Any] = field(default_factory=dict)
+    factory: FactorySpec | None = None
 
     def validate(self) -> None:
-        if not isinstance(self.name, str) or self.name not in {"react", "openhands"}:
-            raise ValueError("actor.name must be react or openhands")
+        if not isinstance(self.name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", self.name):
+            raise ValueError("actor.name must be a simple actor identifier")
         _json_object(self.params, "actor.params")
-        allowed = {"max_output_tokens", "condenser"} if self.name == "openhands" else set()
+        if self.factory is not None:
+            if self.name == "openhands":
+                raise ValueError("a custom actor cannot override the built-in openhands name")
+            if not isinstance(self.factory, FactorySpec):
+                raise ValueError("actor.factory must use FactorySpec")
+            self.factory.validate()
+            return
+        if self.name != "openhands":
+            raise ValueError("the built-in actor is openhands; custom actors require actor.factory")
+        allowed = {"max_output_tokens", "condenser"}
         unknown = set(self.params) - allowed
         if unknown:
             raise ValueError(f"unknown {self.name} actor parameters: {sorted(unknown)}")
@@ -225,10 +236,13 @@ class SimulationSpec:
         # Preserve the existing wire representation for ER-slot callers.
         if self.memory.method_factory is None:
             value["memory"].pop("method_factory")
+        if not self.memory.params:
+            value["memory"].pop("params")
         if self.replay_gate is None:
             value.pop("replay_gate")
-        if self.actor == ActorSpec():
-            value.pop("actor")
+        # Always record the actor. Earlier records without this key used ReAct.
+        if self.actor.factory is None:
+            value["actor"].pop("factory")
         return value
 
     @classmethod
@@ -256,7 +270,10 @@ class SimulationSpec:
                 gate["factory"] = _construct(FactorySpec, gate["factory"])
             value["replay_gate"] = _construct(ReplayGateSpec, gate)
         if "actor" in value:
-            value["actor"] = _construct(ActorSpec, value["actor"])
+            actor = dict(value["actor"])
+            if actor.get("factory") is not None:
+                actor["factory"] = _construct(FactorySpec, actor["factory"])
+            value["actor"] = _construct(ActorSpec, actor)
         value["workload"] = _construct(WorkloadSpec, workload)
         value["model"] = _construct(ModelSpec, model)
         value["memory"] = _construct(MemorySpec, memory)
@@ -274,13 +291,14 @@ class SimulationSpec:
         _json_object(self.actor.params, "actor.params")
         value = self.to_dict()
         for section, key in (("benchmark", "factory"), ("memory", "factory"),
-                             ("memory", "method_factory"), ("model", "transport")):
+                             ("memory", "method_factory"), ("model", "transport"),
+                             ("actor", "factory")):
             original = value[section].get(key)
             if original is not None:
                 value[section][key] = asdict(_construct(FactorySpec, original).resolved(root))
         if self.replay_gate is not None and self.replay_gate.factory is not None:
             value["replay_gate"]["factory"] = asdict(self.replay_gate.factory.resolved(root))
-        if self.actor.params.get("condenser") is not None:
+        if self.actor.name == "openhands" and self.actor.params.get("condenser") is not None:
             condenser = _construct(FactorySpec, self.actor.params["condenser"])
             value["actor"]["params"]["condenser"] = asdict(condenser.resolved(root))
         session_factory = self.workload.params.get("session_factory")
@@ -313,10 +331,18 @@ class SimulationSpec:
         if not isinstance(self.actor, ActorSpec):
             raise ValueError("actor must use ActorSpec")
         self.actor.validate()
-        if self.actor.name == "openhands" and self.max_total_tokens is not None:
+        builtin_openhands = self.workload.factory is None and self.actor.name == "openhands"
+        if builtin_openhands and self.max_total_tokens is not None:
             raise ValueError("OpenHands does not support a strict max_total_tokens ceiling")
-        if self.actor.name == "openhands" and self.model.transport is not None:
+        if builtin_openhands and self.model.transport is not None:
             raise ValueError("OpenHands does not support model.transport; configure the model directly")
+        if builtin_openhands:
+            options = _json_object(self.model.request_options, "model.request_options")
+            if options.get("extra_body") is not None and not isinstance(options["extra_body"], dict):
+                raise ValueError("request_options.extra_body must be an object or null")
+            output_fields = {"max_tokens", "max_completion_tokens", "max_output_tokens"}
+            if output_fields & (set(options) | set(options.get("extra_body") or {})):
+                raise ValueError("OpenHands output limits belong in actor.params.max_output_tokens")
         if self.replay_gate is not None:
             if not isinstance(self.replay_gate, ReplayGateSpec):
                 raise ValueError("replay_gate must use ReplayGateSpec")
@@ -359,6 +385,12 @@ class SimulationSpec:
         if self.memory.factory is not None and self.memory.method_factory is not None:
             raise ValueError("provide factory or method_factory, not both")
         custom_factory = self.memory.factory or self.memory.method_factory
+        _json_object(self.memory.params, "memory.params")
+        if custom_factory is not None and self.memory.params:
+            raise ValueError("custom memory parameters belong in factory.kwargs")
+        from ._method_names import validate_method_params
+
+        validate_method_params(self.memory.name, self.memory.params)
         if custom_factory is None and simulation_method_name(self.memory.name) is None:
             raise ValueError("custom memory requires a factory or method_factory")
         if custom_factory is not None and is_reserved_memory_name(self.memory.name):
@@ -370,24 +402,18 @@ class SimulationSpec:
         _json_object(self.workload.params, "workload.params")
         if "environment_python" in self.workload.params:
             environment_python = self.workload.params["environment_python"]
-            if self.actor.name != "openhands":
-                raise ValueError("environment_python is only supported with the openhands actor")
             if not isinstance(environment_python, str) or not environment_python.strip() or "://" in environment_python:
                 raise ValueError("environment_python must be an interpreter path")
         if "session_factory" in self.workload.params:
-            if self.actor.name != "openhands":
-                raise ValueError("session_factory is only supported with the openhands actor")
             _construct(FactorySpec, self.workload.params["session_factory"]).validate()
         if self.workload.factory is None:
-            allowed_params = {"webshop": {"max_actor_steps", "capture_observations", "environment_python", "session_factory"},
+            allowed_params = {"webshop": {"capture_observations", "environment_python", "session_factory"},
                               "miniwob": {"headless", "trial_seed_mode", "capture_observations", "environment_python", "session_factory"},
                               "webarena": {"observation_type", "headless", "reset_factory", "capture_observations", "judge_model", "environment_python", "session_factory"},
                               "osworld": {"env_kwargs", "pause", "capture_observations", "environment_python", "session_factory"}}[self.workload.name]
             unknown = set(self.workload.params) - allowed_params
             if unknown:
                 raise ValueError(f"unknown {self.workload.name} params: {sorted(unknown)}")
-            if "max_actor_steps" in self.workload.params:
-                _positive_integer(self.workload.params["max_actor_steps"], "workload.params.max_actor_steps")
             if "headless" in self.workload.params and type(self.workload.params["headless"]) is not bool:
                 raise ValueError("headless must be a boolean")
             if "capture_observations" in self.workload.params and type(self.workload.params["capture_observations"]) is not bool:

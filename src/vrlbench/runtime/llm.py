@@ -7,6 +7,7 @@ import time
 from contextlib import contextmanager
 from typing import Any, Iterator, List, Mapping, Optional
 from openai import OpenAI
+from vrlbench.provider_usage import provider_error_details
 from vrlbench.runtime.budget import TokenBudgetExceeded, TokenUsageLedger, provider_token_count, provider_usage_total
 logger = logging.getLogger(__name__)
 _client: Optional[OpenAI] = None
@@ -19,6 +20,13 @@ class ProviderIdentityMismatch(RuntimeError):
 
 class ProviderCallUncertain(RuntimeError):
     """Raised when a strict provider call fails with an uncertain charge state."""
+
+def _uncertain_call_message(error: BaseException) -> str:
+    details = provider_error_details(error)
+    status = details.get('http_status')
+    code = details.get('error_code')
+    cause = f' (HTTP {status}' + (f', {code}' if code else '') + ')' if status else ''
+    return f'strict provider call failed{cause} with uncertain charge; automatic retry is disabled'
 
 def _api_key_for_base_url(base_url: Optional[str]) -> Optional[str]:
     """Return the API key that matches the configured OpenAI-compatible endpoint."""
@@ -403,7 +411,7 @@ def complete(prompt: str, model: str, system: Optional[str]=None, temperature: f
             if ledger is not None and ledger.require_provider_usage:
                 if response_committed:
                     raise
-                raise ProviderCallUncertain('strict provider call failed with uncertain charge; automatic retry is disabled') from e
+                raise ProviderCallUncertain(_uncertain_call_message(e)) from e
             logger.warning('complete attempt %d failed: %s', attempt + 1, e)
             if attempt + 1 < max_attempts:
                 time.sleep(2 ** attempt)
@@ -478,7 +486,7 @@ def generate(prompt: str, model: str, stop: Optional[List[str]]=None, temperatur
             if ledger is not None and ledger.require_provider_usage:
                 if response_committed:
                     raise
-                raise ProviderCallUncertain('strict provider call failed with uncertain charge; automatic retry is disabled') from e
+                raise ProviderCallUncertain(_uncertain_call_message(e)) from e
             logger.warning('generate attempt %d failed: %s', attempt + 1, e)
             if attempt + 1 < max_attempts:
                 time.sleep(2 ** attempt)

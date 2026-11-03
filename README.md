@@ -154,6 +154,12 @@ Select a workload, configure the model and memory method, and explicitly set
 `trials` and `max_environment_steps`. Use the same `simulate` → `inspect` →
 `compare` workflow for online computer-control tasks.
 
+Built-in simulations use OpenHands as the actor. VRL-Bench controls the trial
+loop, environments, memory, budgets, and evaluation; each trial starts a fresh
+OpenHands conversation. Use Python 3.12+ for the simulator and a tool-calling
+model; OSWorld also requires vision. Native environments can keep their own
+Python dependencies in separate processes.
+
 | Environment | Task family | Setup and configuration |
 |---|---|---|
 | MiniWoB | Browser and UI interaction | [Python 3.12 + Chromium](docs/QUICKSTART.md#use-miniwob) · [Example config](examples/configs/miniwob_retry.json) |
@@ -162,6 +168,12 @@ Select a workload, configure the model and memory method, and explicitly set
 | OSWorld | Desktop tasks in a resettable VM | [VM and vision-model setup](docs/QUICKSTART.md#use-osworld) · [Example config](examples/configs/osworld_retry.json) |
 | Your tasks | Your agent and environment | [Connect a workload adapter](docs/DEVELOPMENT.md#add-a-task-environment) |
 
+For a first run, use **MiniWoB**: it runs real browser tasks without a shopping
+catalog, search index, self-hosted website, or VM. Prepare Python 3.12, Chromium,
+and a matching ChromeDriver using the [setup guide](docs/QUICKSTART.md#use-miniwob).
+WebShop requires its full catalog and search index even for a small task selection;
+its [walkthrough](docs/QUICKSTART.md#webshop-setup) covers that setup separately.
+
 Clone the repository:
 
 ```bash
@@ -169,42 +181,42 @@ git clone https://github.com/vrl-bench/vrlbench.git
 cd vrlbench
 ```
 
-Follow the selected environment's setup guide above, activate its Python
-environment, and install the SDK:
+Follow the selected environment's setup guide, activate the simulator's
+Python 3.12+ environment, and install the simulation runtime:
 
 ```bash
-python -m pip install -e '.[runtime]'
+python -m pip install -e '.[runtime,openhands]'
 ```
 
-The example below uses **WebShop** to demonstrate the shared workflow. Set the
-same model in the three configurations and supply your API key through an
-environment variable. They select two goals, with up to six trials per goal.
-Runs execute the configured models and may incur API charges.
+After preparing MiniWoB, set the same model in the three configurations and
+supply your API key through an environment variable. The examples select one
+`click-test` case with explicit trial and action limits. **Page recording is
+already enabled**, so the first run saves screenshots for replay. Runs execute
+the configured model and may incur API charges.
 
 Run memory-free Retry first, then compare recent failure traces and Reflexion:
 
 ```bash
-vrlbench simulate --config examples/configs/webshop_retry.json
-vrlbench simulate --config examples/configs/webshop_trace_memory.json
-vrlbench simulate --config examples/configs/webshop_reflexion.json
-vrlbench inspect runs/webshop_reflexion --case sample_0000
-vrlbench compare runs/webshop_retry runs/webshop_trace_memory runs/webshop_reflexion
+vrlbench simulate --config examples/configs/miniwob_retry.json
+vrlbench simulate --config examples/configs/miniwob_trace_memory.json
+vrlbench simulate --config examples/configs/miniwob_reflexion.json
+vrlbench inspect runs/miniwob_reflexion
+vrlbench replay runs/miniwob_retry runs/miniwob_trace_memory runs/miniwob_reflexion
+vrlbench compare runs/miniwob_retry runs/miniwob_trace_memory runs/miniwob_reflexion
 ```
 
 The memory conditions reuse Retry's completed first trial under matched cases
 and budgets. Inspect the recorded contexts and actions to see how each method
 uses failure feedback, then compare success, recovery, and trials to solve.
-Add [paired statistics](docs/STATISTICS.md) to assess differences and uncertainty.
+Open the generated `runs/miniwob_retry/replay.html` to view pages, actions,
+memory, and budgets. Replay reads saved records without new model calls.
+A first-trial success stops all conditions without generating memory; expand
+the task selection for memory experiments and
+[paired statistical analysis](docs/STATISTICS.md).
 
-**Replay a recorded run.**
-
-```bash
-vrlbench replay runs/webshop_reflexion
-```
-
-Replay reads saved records without new model calls.
-[Enable page capture](docs/QUICKSTART.md#inspect-and-compare) before a run to
-include native page snapshots.
+**Try your own memory.** [Copy the example implementation and change the memory
+factory in the same configuration](docs/DEVELOPMENT.md#bring-your-own-memory),
+then use the same commands to evaluate and compare the new version.
 
 <details>
 <summary>Example: inspect a recorded six-trial comparison</summary>

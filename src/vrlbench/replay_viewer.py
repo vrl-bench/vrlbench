@@ -21,6 +21,7 @@ from .results import SimulationResult
 
 _MAX_ASSET_BYTES = 16 * 1024 * 1024
 _MAX_REPORT_BYTES = 64 * 1024 * 1024
+_EXTERNAL_TEXT_MIN_BYTES = 16 * 1024
 _ACTION_ATTEMPT_BUDGET_UNIT = "environment_action_or_invalid_response"
 
 
@@ -183,8 +184,6 @@ def _shared_snapshot_run(path: Path, case_id: str, trial: dict, *,
     if not source.is_file():
         return None  # Keep the text trace and the existing missing-source notice.
     if source not in cache:
-        if source.stat().st_size > _MAX_REPORT_BYTES:
-            raise ValueError("Shared first-trial source exceeds the 64 MiB reading limit")
         payload = SimulationResult.from_path(source).require_complete().to_dict()
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"),
                                           ensure_ascii=False, allow_nan=False).encode()).hexdigest()
@@ -379,9 +378,51 @@ def replay_data(paths: Iterable[str | Path], *, case_id: str | None = None) -> d
     return {"schema_version": 1, "runs": runs}
 
 
+def _externalize_texts(data: dict, asset_directory: Path, assets: dict[str, bytes]) -> None:
+    """Keep large raw records beside the report, not in its initial DOM data.
+
+    Exact actor memory contexts, actions and inert HTML snapshots stay inline.
+    Only this export's view changes; the saved result and replay_data do not.
+    """
+    references: dict[str, dict] = {}
+
+    def externalize(record: dict, field: str) -> None:
+        value = record.get(field)
+        if isinstance(value, str):
+            raw, format_name = value.encode("utf-8"), "text"
+        elif isinstance(value, (dict, list)):
+            raw = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            format_name = "json"
+        else:
+            return
+        if len(raw) < _EXTERNAL_TEXT_MIN_BYTES:
+            return
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest not in references:
+            suffix = ".json" if format_name == "json" else ".txt"
+            filename = digest + suffix
+            assets[filename] = raw
+            references[digest] = {"url": quote(asset_directory.name, safe="") + "/" + filename,
+                                  "sha256": digest, "bytes": len(raw), "format": format_name}
+        record[field] = {"text_ref": digest}
+
+    for run in data["runs"]:
+        for case in run["cases"]:
+            for trial in case["trials"]:
+                for field in ("raw_actor_trajectory", "initial_observation"):
+                    externalize(trial, field)
+                for frame in trial["frames"]:
+                    for field in ("before_observation", "after_observation"):
+                        externalize(frame, field)
+                for field in ("state_pre", "state_after", "controller_state_pre", "controller_state"):
+                    externalize(trial["memory"], field)
+    if references:
+        data["external_texts"] = references
+
+
 def export_replay(paths: Iterable[str | Path], output: str | Path, *,
                   case_id: str | None = None, external_images: bool = False) -> Path:
-    """Write a replay, embedding images by default, without overwriting outputs."""
+    """Write a replay with large raw text sidecars, without overwriting outputs."""
     if type(external_images) is not bool:
         raise TypeError("external_images must be a boolean")
     requested = Path(output)
@@ -416,6 +457,10 @@ def export_replay(paths: Iterable[str | Path], output: str | Path, *,
                         filename = hashlib.sha256(raw).hexdigest() + suffix
                         assets.setdefault(filename, raw)
                         record[field] = quote(asset_directory.name, safe="") + "/" + filename
+
+    _externalize_texts(data, asset_directory, assets)
+    if assets and (asset_directory.exists() or asset_directory.is_symlink()):
+        raise FileExistsError(f"Replay asset directory already exists: {asset_directory}")
 
     content = json.dumps(data, ensure_ascii=False, allow_nan=False)
     # A transcript can contain </script>; JSON quoting alone is insufficient.

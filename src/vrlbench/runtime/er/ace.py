@@ -113,14 +113,17 @@ def _validate_curator(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     for index, operation in enumerate(operations):
         if not isinstance(operation, Mapping):
             return (None, f'curator operation {index} is not an object')
-        missing = {'type', 'section', 'content'} - set(operation)
+        if 'type' not in operation:
+            return (None, f"curator operation {index} lacks fields: ['type']")
+        if operation['type'] != 'ADD':
+            continue
+        missing = {'section', 'content'} - set(operation)
         if missing:
             return (None, f'curator operation {index} lacks fields: {sorted(missing)}')
-        if operation.get('type') != 'ADD':
-            return (None, f'curator operation {index} is not ADD')
         section = _normalize_section(str(operation.get('section', '')))
         if section not in _SECTIONS:
-            continue
+            # Match upstream: an unfamiliar section must not discard the insight.
+            section = 'others'
         normalized.append({'type': 'ADD', 'section': section, 'content': str(operation.get('content', ''))})
     return ({'reasoning': reasoning, 'operations': normalized}, None)
 

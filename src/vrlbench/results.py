@@ -12,7 +12,8 @@ from pathlib import Path
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
-from ._comparison import comparable_actor, comparable_workload, recorded_condenser_identity
+from ._comparison import (comparable_actor, comparable_workload,
+                          recorded_actor_identity, recorded_condenser_identity)
 
 
 RESOURCE_FIELDS = (
@@ -336,6 +337,12 @@ def _component_identity_check(payloads: Sequence[Mapping[str, Any]], context: di
     components without plugin factories are outside this source-hash check.
     """
     roles = ("benchmark", "model_transport")
+    actors = [recorded_actor_identity(payload) for payload in payloads]
+    known_actors = {json.dumps(actor, sort_keys=True) for actor in actors if actor is not None}
+    if len(known_actors) > 1:
+        raise ValueError("results use different actor implementations or SDK versions")
+    if (context.get("actor") or {}).get("factory") is not None:
+        roles += ("actor",)
     condensers = [recorded_condenser_identity(payload) for payload in payloads]
     if ((context.get("actor") or {}).get("params", {}).get("condenser") is not None
             or any(identity is not None for identity in condensers)):

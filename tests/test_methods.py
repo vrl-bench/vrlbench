@@ -188,6 +188,25 @@ class MethodTests(unittest.TestCase):
         self.failure(method, actor_trajectory="DECISION BLOCK: click target")
         self.assertIn("DECISION BLOCK: click target", client.calls[0]["messages"][-1]["content"])
 
+    def test_reflexion_output_limit_reaches_both_public_entrypoints(self):
+        from vrlbench.backends import BackendRuntime
+
+        for limit in (None, 1024):
+            options = {} if limit is None else {"max_tokens": limit}
+            client = FakeClient("Returned reflection, including its unfinished tail")
+            method = load_method("reflexion", client=client, params=options)
+            method.reset_case(CaseConfig(total_trials=2, metadata={"benchmark": "webshop"}))
+            self.failure(method)
+            self.assertEqual(client.calls[0]["max_tokens"], 256 if limit is None else limit)
+            self.assertIn("Returned reflection, including its unfinished tail", method.context_for_trial(1).user)
+            runtime = BackendRuntime(spec={"memory": {"name": "reflexion", "params": options}},
+                                     er_name="reflexion", controller="none")
+            self.assertEqual(runtime.make_memory().max_tokens, 256 if limit is None else limit)
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            load_method("reflexion", params={"max_tokens": True})
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            load_method("retry", params={"max_tokens": 1024})
+
     def test_dc_cu_reuses_cheatsheet_writer_and_actor_trajectory(self):
         method, client = self.method("dc_cu", "<cheatsheet>Check the color.</cheatsheet>",
                                      metadata={"task": "Original task"})
@@ -200,17 +219,22 @@ class MethodTests(unittest.TestCase):
         self.assertEqual(method.snapshot()["history"], [self.trace()])
 
     def test_ace_preserves_two_call_reflector_curator_flow(self):
-        curator = json.dumps({"reasoning": "Synthetic curator response", "operations": [
-            {"type": "ADD", "section": "verification_checklist", "content": "Verify color"}]})
-        method, client = self.method("ace", "Synthetic reflection", curator)
-        self.failure(method, actor_trajectory="RAW ACE ACTOR TRACE")
-        context = method.context_for_trial(1)
-        self.assertIn("ACE PLAYBOOK FROM PRIOR ATTEMPTS", context.user)
-        self.assertIn("Verify color", context.user)
-        self.assertEqual(context.system, "")
-        self.assertEqual(len(client.calls), 2)
-        self.assertIn("RAW ACE ACTOR TRACE", client.calls[0]["messages"][-1]["content"])
-        self.assertIn("Synthetic reflection", client.calls[1]["messages"][-1]["content"])
+        for section, expected in (("verification_checklist", "## VERIFICATION CHECKLIST\n[vc-00001]"),
+                                  ("unrecognized_section", "## OTHERS\n[misc-00001]")):
+            with self.subTest(section=section):
+                curator = json.dumps({"reasoning": "Synthetic curator response", "operations": [
+                    {"type": "UPDATE", "bullet_id": "unused", "content": "Unsupported update"},
+                    {"type": "ADD", "section": section, "content": "Verify color"}]})
+                method, client = self.method("ace", "Synthetic reflection", curator)
+                self.failure(method, actor_trajectory="RAW ACE ACTOR TRACE")
+                context = method.context_for_trial(1)
+                self.assertIn("ACE PLAYBOOK FROM PRIOR ATTEMPTS", context.user)
+                self.assertIn(expected + " Verify color", context.user)
+                self.assertNotIn("Unsupported update", context.user)
+                self.assertEqual(context.system, "")
+                self.assertEqual(len(client.calls), 2)
+                self.assertIn("RAW ACE ACTOR TRACE", client.calls[0]["messages"][-1]["content"])
+                self.assertIn("Synthetic reflection", client.calls[1]["messages"][-1]["content"])
 
     def test_vex_joint_raw_response_and_budget_are_unchanged(self):
         raw = "  Grounded semantic tree\nNEXT: policy A; allocation = 2\n\n"
@@ -232,6 +256,40 @@ class MethodTests(unittest.TestCase):
         payload = json.loads(client.calls[-1]["messages"][-1]["content"])
         self.assertEqual(payload["remaining_complete_attempts"], 2)
         self.assertEqual(len(payload["complete_ordered_failure_only_ao_forest"]["attempts"]), 1)
+
+    def test_long_history_keeps_every_observation_and_verbatim_scheduler_output(self):
+        from vrlbench.runtime.trajectory import (POLICY_HISTORY_ENCODING,
+            parse_policy_trajectory, render_policy_trajectory, serialize_policy_history)
+
+        page = '<input value="地址 \\ home">\n' * 300
+        traces = [render_policy_trajectory({
+            "schema_version": 1, "task": "Update address", "initial_observation": page,
+            "steps": [{"action": f"click[{index}]", "observation": page},
+                      {"action": "type[address]", "observation": page + str(index)}],
+            "trial_close_reason": "trial_budget_exhausted"}) for index in range(2)]
+        rows = [{"trial": index, "ao_trace": trace} for index, trace in enumerate(traces)]
+        history = serialize_policy_history(rows)
+        self.assertEqual(history["encoding"], POLICY_HISTORY_ENCODING)
+        self.assertEqual(len(history["observations"]), 3)
+        for row, trace in zip(history["attempts"], traces):
+            restored = {"schema_version": row["schema_version"], "task": row["task"],
+                        "trial_close_reason": row["trial_close_reason"],
+                        "initial_observation": history["observations"][row["initial_observation"]["observation_ref"]],
+                        "steps": [{"action": step["action"],
+                                   "observation": history["observations"][step["observation"]["observation_ref"]]}
+                                  for step in row["steps"]]}
+            self.assertEqual(restored, parse_policy_trajectory(trace))
+            self.assertEqual(render_policy_trajectory(restored), trace)
+            self.assertEqual(hashlib.sha256(trace.encode()).hexdigest(), row["canonical_policy_ao_trace_sha256"])
+
+        raw = "  Keep the next policy and its budget exactly as written.\n"
+        method, client = self.method("vex2", raw, trials=3)
+        method.observe_trial(TrialRecord(0, traces[0], False))
+        self.assertEqual(method.context_for_trial(1), ActorContext(system=raw))
+        payload = json.loads(client.calls[0]["messages"][-1]["content"])
+        self.assertEqual(payload["complete_ordered_failure_only_ao_forest"]["encoding"], POLICY_HISTORY_ENCODING)
+        self.assertEqual(method.snapshot()["history"], [traces[0]])
+        self.assertEqual(len(client.calls), 1)
 
     def test_stop_reset_and_no_final_failure_writer_for_all_methods(self):
         for name in list_methods():
