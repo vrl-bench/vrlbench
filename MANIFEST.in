@@ -1,7 +1,7 @@
 include pyproject.toml MANIFEST.in README.md README.zh-CN.md LICENSE THIRD_PARTY_NOTICES
-include CITATION.bib CITATION.cff CONTRIBUTING.md
+include CITATION.bib CITATION.cff CONTRIBUTING.md CHANGELOG.md
 include .gitattributes .gitignore
-recursive-include .github *.yml *.yaml
+recursive-include .github *.yml *.yaml *.md
 recursive-include src *.py
 include src/vrlbench/_replay.html
 recursive-include src/vrlbench/requirements *.txt

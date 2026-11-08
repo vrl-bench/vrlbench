@@ -4,6 +4,33 @@ Contributions to memory methods, workloads, model compatibility,
 and simulation analysis are welcome. You can use and extend the methods
 independently of the simulator; see the [development guide](docs/DEVELOPMENT.md).
 
+## Get help or open an issue
+
+English and Chinese questions and contributions are welcome. Start with the
+[setup and comparison walkthrough](docs/QUICKSTART.md), and search
+[existing issues](https://github.com/vrl-bench/vrlbench/issues) before opening one.
+
+Use the [issue chooser](https://github.com/vrl-bench/vrlbench/issues/new/choose)
+to report a bug or propose a feature or integration. For setup questions,
+research discussions, or sharing a paper and implementation, open a blank issue.
+Documentation reports only need the affected section and a description of the
+problem; benchmark comparison details are optional unless they are relevant.
+Keep credentials and private data out of all reports and attachments.
+
+For benchmark comparisons, include the framework commit, environment and model
+settings, task cases, trial and interaction budgets, reset and success-stopping
+rules, shared first-trial source where used, and outcomes alongside model calls
+and tokens. A minimal sanitized configuration is more useful than a large run dump.
+
+### Issue triage
+
+Maintainers use `bug`, `enhancement`, `documentation`, and `question` to describe
+the work. A report may need a smaller reproduction or more environment details
+before it can be investigated. Link duplicates to the existing discussion.
+Use `good first issue` for a scoped task with a clear expected result and
+validation steps; use `help wanted` when outside contributions would be useful.
+An issue or feature request does not by itself promise a release date.
+
 ## What to contribute
 
 - **Memory methods:** reusable implementations of extraction, retention,
@@ -43,7 +70,9 @@ error and timeout statuses, resource accounting, and compatibility checks.
 
 ## Submit a change
 
-Include a runnable configuration, a focused test, and the commands you ran.
+For behavior changes, include a runnable configuration, a focused test, and the
+commands you ran. For documentation-only changes, describe what you checked;
+runtime tests are not required.
 For experiment results, describe the changed mechanism and comparison settings,
 and report task outcomes alongside resource use. The
 [comparison walkthrough](docs/QUICKSTART.md) provides a worked example.

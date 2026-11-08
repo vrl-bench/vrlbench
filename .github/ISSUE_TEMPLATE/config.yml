@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setup and comparison walkthrough
+    url: https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md
+    about: Read the setup guide, then open a blank issue for a question if needed. English and Chinese are welcome.
+  - name: Contribution and integration guide
+    url: https://github.com/vrl-bench/vrlbench/blob/main/CONTRIBUTING.md
+    about: Find contribution requirements and how to propose a new memory method or integration.

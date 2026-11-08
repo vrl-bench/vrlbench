@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a problem with VRL-Bench, its setup, or documentation.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Chinese reports are welcome. / 欢迎使用中文或英文反馈。
+        Search existing issues first. Remove API keys, credentials, private task
+        data, and personal information from configurations, logs, and replay files.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Expected and actual behavior
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest command or example that shows the problem. For a documentation issue, link the affected section.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Version and environment (if applicable)
+      description: Include the VRL-Bench version or commit, OS, Python version, install command, workload, and model/provider. Omit credentials.
+      placeholder: |
+        VRL-Bench version or commit:
+        OS and Python version(s):
+        Install command:
+        Workload and model/provider:
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant output or evidence (optional)
+      description: Paste a short traceback or sanitized output, or attach a screenshot. Include the failed command and recorded run status where available.
+    validations:
+      required: false
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Matched comparison settings (benchmark reports only)
+      description: Leave blank for setup, documentation, and other non-comparison issues. Include enough detail to distinguish a method effect from changed conditions.
+      placeholder: |
+        Methods and baseline:
+        Actor model, endpoint, and request options:
+        Workload/environment revision and case selection:
+        Trial and per-trial interaction budgets:
+        Reset and success-stopping rules:
+        Shared first-trial source (if used):
+        Outcomes, run status, and model calls/tokens:
+        Sanitized configuration or reproduction command:
+    validations:
+      required: false

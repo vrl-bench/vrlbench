@@ -1,0 +1,46 @@
+name: Feature or integration request
+description: Propose a memory method, workload, model integration, or project improvement.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Chinese proposals are welcome. / 欢迎使用中文或英文提出建议。
+        Search existing issues first. For implementation guidance, see
+        [Contributing](https://github.com/vrl-bench/vrlbench/blob/main/CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Who needs this, and what are they trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the intended behavior and a small example of how it would be used.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area (optional)
+      multiple: true
+      options:
+        - Memory method
+        - Workload
+        - Model compatibility
+        - Analysis or replay tooling
+        - Documentation or onboarding
+        - Release or community workflow
+    validations:
+      required: false
+  - type: textarea
+    id: references
+    attributes:
+      label: Alternatives, references, or implementation notes (optional)
+      description: For a method or workload, link its paper and original code/license and note any trial-and-error adaptation. Describe alternatives you considered.
+    validations:
+      required: false
