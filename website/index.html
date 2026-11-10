@@ -17,31 +17,82 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <a class="brand" href="#" aria-label="VRL-Bench home"><img src="assets/mark.png" width="32" height="32" alt=""><span>VRL-Bench</span></a>
-    <nav aria-label="Main navigation"><a href="#inspect">Replay</a><a href="#simulator">Simulator</a><a href="#build">Build</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md">Docs ↗</a><a class="nav-github" href="https://github.com/vrl-bench/vrlbench">GitHub ↗</a></nav>
+    <nav aria-label="Main navigation">
+      <a href="#inspect">Replay</a>
+      <a class="nav-results" href="#findings">Results</a>
+      <a class="nav-simulator" href="#simulator">Simulator</a>
+      <a href="#build">Build</a>
+      <a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md">Docs ↗</a>
+      <a class="nav-github" href="https://github.com/vrl-bench/vrlbench">GitHub ↗</a>
+    </nav>
   </header>
 
   <main id="main">
     <section class="hero wrap">
       <p class="eyebrow">A UNIFIED SIMULATOR FOR AGENT MEMORY SYSTEMS</p>
       <h1>Memory can help.<br>It can also <span>hurt.</span></h1>
-      <p class="hero-lead">Does experience make your agent better?<br> VRL-Bench lets you find out through fair trial-and-error simulation.</p>
-      <div class="resource-links"><a href="https://github.com/vrl-bench/vrlbench"><span aria-hidden="true">⌘</span> Code</a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#use-miniwob"><span aria-hidden="true">↗</span> Get started</a><a href="https://arxiv.org/abs/2609.12404"><span aria-hidden="true">▤</span> Paper</a><a class="resource-active" href="#inspect"><span aria-hidden="true">↓</span> Explore the replay</a></div>
+      <p class="hero-lead">Compare agent memory methods using the same tasks, models, and budgets.</p>
+      <div class="resource-links">
+        <div class="resource-group">
+          <a class="resource-active" href="#inspect"><span aria-hidden="true">↓</span> Explore the replay</a>
+          <a href="#get-started"><span aria-hidden="true">↓</span> Try offline</a>
+        </div>
+        <div class="resource-group">
+          <a href="https://github.com/vrl-bench/vrlbench"><span aria-hidden="true">⌘</span> Code</a>
+          <a href="https://arxiv.org/abs/2609.12404"><span aria-hidden="true">▤</span> Paper</a>
+        </div>
+      </div>
+      <p class="hero-origin">From <strong>NASP, Tsinghua University</strong></p>
     </section>
 
     <section class="replay-section wrap" id="inspect" aria-labelledby="replay-heading">
       <span class="anchor-alias" id="comparison" aria-hidden="true"></span>
-      <div class="replay-heading"><p class="eyebrow">TRIAL-AND-ERROR REPLAY</p><h2 id="replay-heading">See what the agent saw.</h2><p>Step through its actions alongside the memory it received and the trial and action budgets.</p></div>
+      <div class="replay-heading">
+        <p class="eyebrow">TRIAL-AND-ERROR REPLAY</p>
+        <h2 id="replay-heading">See what the agent saw.</h2>
+        <p>Step through the agent’s actions, memory, and budgets. The replay opens at Trial 2, where the agent receives a reflection on its failed first attempt.</p>
+      </div>
       <div class="recorded-replay" id="recorded-replay" aria-labelledby="run-title">
         <div class="run-header"><div><p class="small-label">RECORDED RUN</p><h3 id="run-title">WebArena · Reflexion · GPT-4.1</h3><p id="run-task"></p></div><a class="text-link" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#inspect-and-compare">Replay your runs ↗</a></div>
-        <div class="run-control"><button id="run-prev" aria-label="Previous recorded action">←</button><label for="run-position" class="visually-hidden">Recorded position</label><select id="run-position"></select><button id="run-next" aria-label="Next recorded action">→</button><div class="phase-buttons"><button id="run-before" aria-pressed="false">Before</button><button id="run-after" aria-pressed="true">After</button></div></div>
+        <div class="run-control">
+          <div class="run-step-control">
+            <button id="run-prev" aria-label="Previous recorded action">←</button>
+            <label for="run-position" class="visually-hidden">Recorded position</label>
+            <select id="run-position"></select>
+            <button id="run-next" aria-label="Next recorded action">→</button>
+          </div>
+          <div class="phase-buttons" role="group" aria-label="Page snapshot timing">
+            <button id="run-before" aria-pressed="false">Before</button>
+            <button id="run-after" aria-pressed="true">After</button>
+          </div>
+        </div>
         <div class="run-workspace"><div class="run-page"><span class="small-label">RECORDED PAGE</span><img id="run-image" alt="Native page snapshot at the selected replay position"><span class="small-label">EXECUTED ACTION</span><code id="run-action"></code></div><aside><span class="small-label">MEMORY SUPPLIED TO THIS TRIAL</span><pre id="run-memory"></pre><div class="run-state"><p id="run-progress"></p><p id="run-budget"></p><p id="run-outcome" aria-live="polite"></p></div></aside></div>
         <p class="run-note">Actual saved pages, actions, and memory. Playback makes no model calls.</p>
       </div>
+      <a class="replay-results text-link" href="#findings">See the MiniWoB and WebShop results <span aria-hidden="true">↓</span></a>
     </section>
 
     <section class="section finding-section wrap" id="findings">
       <div class="section-title"><p class="eyebrow">CONTROLLED MEMORY EVALUATION</p><h2>Memory gains are not automatic.</h2><p>Across three models on MiniWoB and WebShop, leading memory methods improve success in some settings and reduce it in others. Fair trial budgets make these differences visible.</p></div>
-      <figure class="effects-figure"><a href="assets/memory-effects.svg" aria-label="Open the full-size comparison figure"><img src="assets/memory-effects.svg" alt="All eighteen success-rate changes versus memory-free Retry for Reflexion, DC-Cu* and ACE*, across three models on MiniWoB and WebShop. Positive and negative changes appear, with paired 95 percent confidence intervals." loading="lazy"></a><figcaption>Success-rate change versus Retry within six trials, in percentage points. Bars: paired 95% confidence intervals. Filled points: intervals excluding zero.</figcaption></figure>
+      <figure class="effects-figure">
+        <a class="effects-full" href="assets/memory-effects.svg" aria-label="Open the full-size comparison figure"><img src="assets/memory-effects.svg" alt="All eighteen success-rate changes versus memory-free Retry for Reflexion, DC-Cu* and ACE*, across three models on MiniWoB and WebShop. Positive and negative changes appear, with paired 95 percent confidence intervals." loading="lazy"></a>
+        <div class="effects-stacked">
+          <ul class="effects-legend" aria-label="Methods">
+            <li><span aria-hidden="true">○</span> Reflexion</li>
+            <li><span aria-hidden="true">△</span> DC-Cu*</li>
+            <li><span aria-hidden="true">□</span> ACE*</li>
+          </ul>
+          <div class="effects-panel">
+            <img class="effects-axis" src="assets/memory-effects.svg#panel-axis" alt="" width="54" height="523" loading="lazy">
+            <img src="assets/memory-effects.svg#miniwob-panel" alt="MiniWoB. Nine success-rate changes versus Retry with paired 95 percent confidence intervals. Estimates cluster near zero across the three models." width="543" height="523" loading="lazy">
+          </div>
+          <div class="effects-panel">
+            <img class="effects-axis" src="assets/memory-effects.svg#panel-axis" alt="" width="54" height="523" loading="lazy">
+            <img src="assets/memory-effects.svg#webshop-panel" alt="WebShop. Nine success-rate changes versus Retry with paired 95 percent confidence intervals. Positive and negative effects appear across the three models." width="543" height="523" loading="lazy">
+          </div>
+        </div>
+        <figcaption>Success-rate change versus Retry within six trials, in percentage points. Bars show paired 95% confidence intervals. Filled points mark intervals that exclude zero. <span class="effects-mobile-note">Above zero favors memory. An asterisk marks a failure-only adaptation. <a href="assets/memory-effects.svg">Open full-size comparison ↗</a></span></figcaption>
+      </figure>
       <p class="research-link"><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/RESEARCH.md">Read the findings and experimental settings <span aria-hidden="true">↗</span></a></p>
       <div class="exposure-section"><div><p class="eyebrow">EXPLORATION & EXPLOITATION</p><h3>When should experience<br>be replayed?</h3><p>Retained experience can guide an agent—and displace useful exploration. Reflection-exposure experiments revealed this tension in verbal reinforcement learning.</p><p>Control experience exposure with the Replay gate, or study an integrated scheduler such as VEX².</p><a class="text-link" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/RESEARCH.md#experience-exposure-creates-an-explorationexploitation-decision">Explore the exposure experiments ↗</a></div><a class="exposure-figure" href="assets/reflection-exposure.svg" aria-label="Open reflection exposure experiment figure"><img src="assets/reflection-exposure.svg" alt="Fixed reflection exposure experiments on AlfWorld and HotPotQA show that more replay does not always yield greater success." loading="lazy"></a></div>
     </section>
@@ -58,10 +109,30 @@
       <div class="method-library"><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/DEVELOPMENT.md#reference-implementations">Reflexion <small>NeurIPS 2023</small></a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/DEVELOPMENT.md#reference-implementations">DC-Cu* <small>EACL 2026</small></a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/DEVELOPMENT.md#reference-implementations">ACE* <small>ICLR 2026</small></a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/DEVELOPMENT.md#reference-implementations">VEX² <small>Exploration–exploitation scheduling</small></a><a class="your-method" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/DEVELOPMENT.md">Your method <small>Build, evaluate, iterate ↗</small></a></div>
       <p class="adaptation-note">* Adapted to failure-only trial and error. Memory-free Retry is included as a common exploration baseline.</p>
       <div class="build-flow"><div><span>01</span><h3>Establish a baseline.</h3><p>Run memory-free Retry on your tasks.</p></div><span class="flow-arrow" aria-hidden="true">→</span><div><span>02</span><h3>Add your memory.</h3><p>Evaluate the complete implementation.</p></div><span class="flow-arrow" aria-hidden="true">→</span><div><span>03</span><h3>Improve from feedback.</h3><p>Compare each candidate with its predecessor.</p></div></div>
-      <div class="start-block"><div><h3>Run. Inspect. Compare.</h3><p>Start with a real MiniWoB browser task. The example configurations save page snapshots for replay; use the same workflow with other prepared environments.</p><a class="button dark-button" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#use-miniwob">Get started <span aria-hidden="true">↗</span></a></div><div class="command-block"><div class="command-header"><span>AFTER ENVIRONMENT AND MODEL SETUP</span><button id="copy-command">Copy</button></div><pre><code id="example-command">vrlbench simulate --config examples/configs/miniwob_retry.json
-vrlbench simulate --config examples/configs/miniwob_reflexion.json
-vrlbench replay runs/miniwob_retry runs/miniwob_reflexion
-vrlbench compare runs/miniwob_retry runs/miniwob_reflexion</code></pre><p>Simulations call your configured model. Saved-run replay makes no model calls.</p></div></div>
+      <div class="start-block" id="get-started">
+        <div class="start-intro">
+          <p class="eyebrow">OFFLINE QUICKSTART</p>
+          <h3>Run your first comparison.</h3>
+          <p class="start-copy">See how a rule-based agent uses feedback from a failed attempt. You’ll need Python 3.10+. The example runs without a model API key or benchmark downloads.</p>
+          <div class="start-links">
+            <a class="button dark-button" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#local-interface-check">Offline instructions <span aria-hidden="true">↗</span></a>
+            <a class="text-link" href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md#use-miniwob">Set up MiniWoB ↗</a>
+          </div>
+        </div>
+        <div class="command-block">
+          <div class="command-header"><span>RUN FROM YOUR TERMINAL</span><button id="copy-command">Copy</button></div>
+          <pre><code id="example-command">git clone https://github.com/vrl-bench/vrlbench.git
+cd vrlbench
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[runtime]'
+vrlbench simulate --config examples/configs/local_retry.json
+vrlbench simulate --config examples/configs/local_feedback.json
+vrlbench inspect runs/local_feedback --case case_b
+vrlbench compare runs/local_retry runs/local_feedback</code></pre>
+          <p>This example illustrates how memory changes the agent’s next attempt. Use fresh run directories if you repeat it.</p>
+        </div>
+      </div>
       <div class="doc-links"><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/QUICKSTART.md"><span>Run a simulation</span><small>Environment setup and a complete comparison</small><b aria-hidden="true">↗</b></a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/DEVELOPMENT.md"><span>Develop a memory system</span><small>Integration, candidate evaluation, and feedback</small><b aria-hidden="true">↗</b></a><a href="https://github.com/vrl-bench/vrlbench/blob/main/docs/STATISTICS.md"><span>Analyze results</span><small>Metrics, paired inference, and conditional power</small><b aria-hidden="true">↗</b></a></div>
     </div></section>
 

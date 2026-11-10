@@ -2,6 +2,9 @@
   <title id="chart-title">Memory does not reliably beat simply trying again.</title>
   <desc id="chart-description">Observed SR@6 differences relative to memory-free Retry for Reflexion, DC-Cu*, and ACE*, across three models on MiniWoB and WebShop. All 18 estimates and paired 95% confidence intervals share one scale. Above zero favors memory; below zero favors Retry. Filled markers identify intervals excluding zero.</desc>
   <metadata id="source-data">{"metric":"SR@6 difference relative to memory-free Retry","unit":"percentage points","trials":6,"source":"https://arxiv.org/abs/2609.12404","source_figure":"fig_vrlbench_reevaluation_paired_effects","source_summary_sha256":"8e0206a4d160ce9d0bc5b52298450d81544fbd33a292903cd77fb83cfb839a2d","interval":"paired 95% percentile bootstrap","bootstrap_resamples":100000,"bootstrap_seed":0,"observations":18,"y_origin":484,"pixels_per_percentage_point":8}</metadata>
+  <view id="panel-axis" viewBox="72 219 54 523"/>
+  <view id="miniwob-panel" viewBox="131 219 543 523"/>
+  <view id="webshop-panel" viewBox="796 219 543 523"/>
   <defs>
     <style>
       text { font-family: Inter, "Helvetica Neue", Arial, sans-serif; fill: #192b40; }
