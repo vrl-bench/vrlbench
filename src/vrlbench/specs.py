@@ -368,7 +368,12 @@ class SimulationSpec:
             if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
                 raise ValueError("base_url must be an HTTP(S) endpoint without credentials, query, or fragment")
         _json_object(self.model.request_options, "model.request_options")
-        forbidden = {"model", "messages", "stream", "api_key", "base_url"} & set(self.model.request_options)
+        protocol = {"model", "messages", "input", "instructions", "previous_response_id",
+                    "conversation", "prompt", "stream", "api_key", "base_url"}
+        forbidden = protocol & set(self.model.request_options)
+        extra = self.model.request_options.get('extra_body')
+        if isinstance(extra, Mapping):
+            forbidden |= protocol & set(extra)
         if forbidden:
             raise ValueError(f"request_options cannot override {sorted(forbidden)}")
         _validate_single_completion_count(self.model.request_options)
@@ -408,14 +413,24 @@ class SimulationSpec:
             _construct(FactorySpec, self.workload.params["session_factory"]).validate()
         if self.workload.factory is None:
             allowed_params = {"webshop": {"capture_observations", "environment_python", "session_factory"},
-                              "miniwob": {"headless", "trial_seed_mode", "capture_observations", "environment_python", "session_factory"},
-                              "webarena": {"observation_type", "headless", "reset_factory", "capture_observations", "judge_model", "environment_python", "session_factory"},
-                              "osworld": {"env_kwargs", "pause", "capture_observations", "environment_python", "session_factory"}}[self.workload.name]
+                              "miniwob": {"headless", "observation_mode", "trial_seed_mode", "include_screenshot", "capture_observations", "environment_python", "session_factory"},
+                              "webarena": {"observation_type", "include_screenshot", "headless", "reset_factory", "capture_observations", "judge_model", "environment_python", "session_factory"},
+                              "osworld": {"env_kwargs", "pause", "gui_only", "capture_observations", "environment_python", "session_factory"}}[self.workload.name]
             unknown = set(self.workload.params) - allowed_params
             if unknown:
                 raise ValueError(f"unknown {self.workload.name} params: {sorted(unknown)}")
             if "headless" in self.workload.params and type(self.workload.params["headless"]) is not bool:
                 raise ValueError("headless must be a boolean")
+            if self.workload.name == "miniwob":
+                if self.workload.params.get("observation_mode", "html") not in {"html", "screenshot"}:
+                    raise ValueError("MiniWoB observation_mode must be html or screenshot")
+                if self.workload.params.get("observation_mode") == "screenshot" and self.max_total_tokens is not None:
+                    raise ValueError("screenshot requests do not support a strict max_total_tokens ceiling")
+            if "include_screenshot" in self.workload.params:
+                if type(self.workload.params["include_screenshot"]) is not bool:
+                    raise ValueError("include_screenshot must be a boolean")
+                if self.workload.params["include_screenshot"] and self.max_total_tokens is not None:
+                    raise ValueError("screenshot requests do not support a strict max_total_tokens ceiling")
             if "capture_observations" in self.workload.params and type(self.workload.params["capture_observations"]) is not bool:
                 raise ValueError("capture_observations must be a boolean")
             if self.workload.params.get("trial_seed_mode", "paired_trial") not in {"paired_trial", "fixed_instance"}:
@@ -454,6 +469,10 @@ class SimulationSpec:
     def _validate_interactive_workload(self) -> None:
         name, params = self.workload.name, self.workload.params
         if name == "webarena":
+            if type(params.get("include_screenshot", False)) is not bool:
+                raise ValueError("WebArena include_screenshot must be a boolean")
+            if params.get("include_screenshot", False) and self.max_total_tokens is not None:
+                raise ValueError("WebArena screenshot requests do not support a strict max_total_tokens ceiling")
             if "judge_model" in params and (not isinstance(params["judge_model"], str) or not params["judge_model"].strip()):
                 raise ValueError("WebArena judge_model must be a nonempty model name")
             reset = params.get("reset_factory")
@@ -463,6 +482,8 @@ class SimulationSpec:
             if params.get("observation_type", "accessibility_tree") not in {"accessibility_tree", "html"}:
                 raise ValueError("WebArena supports text observations: accessibility_tree or html")
         if name == "osworld":
+            if type(params.get('gui_only', False)) is not bool:
+                raise ValueError('OSWorld gui_only must be a boolean')
             kwargs = _json_object(params.get("env_kwargs", {}), "OSWorld env_kwargs")
             if not isinstance(kwargs.get("path_to_vm"), str) or not kwargs["path_to_vm"].strip():
                 raise ValueError("OSWorld requires env_kwargs.path_to_vm pointing to a provisioned VM; the adapter does not download images")

@@ -182,11 +182,26 @@ class OSWorldSession:
                 or not math.isfinite(pause) or pause < 0):
             raise ValueError("OSWorld pause must be a finite nonnegative number")
         self._pause = float(pause)
+        self._gui_only = params.get('gui_only', False)
+        if type(self._gui_only) is not bool:
+            raise TypeError('OSWorld gui_only must be a boolean')
         self.source_identity = {
             "case_id": self.case_id, "task_id": config["id"],
             "config_sha256": hashlib.sha256(raw).hexdigest(),
             "snapshot_name": snapshot, "provider_name": kwargs.get("provider_name", "vmware"),
         }
+        if self._gui_only:
+            from . import gui_policy
+
+            self.system_prompt = SYSTEM_PROMPT + (
+                '\nUse only direct PyAutoGUI mouse/keyboard operations and sleep. '
+                'Imports are limited to pyautogui and time; module and function import aliases are supported. '
+                'Do not launch a terminal or use programmatic file access.'
+            )
+            self.source_identity['action_policy'] = {
+                'name': 'gui_only_pyautogui',
+                'source_sha256': hashlib.sha256(Path(gui_policy.__file__).read_bytes()).hexdigest(),
+            }
         self._identity = json.dumps(self.source_identity, sort_keys=True)
         if env_factory is None:
             try:
@@ -249,18 +264,26 @@ class OSWorldSession:
                 "responses, not mixed with Python code"
             )
         if len(program.body) == 1 and isinstance(program.body[0], ast.Expr):
+            data_literal = False
             try:
                 ast.literal_eval(program.body[0].value)
+                data_literal = True
             except (ValueError, TypeError):
                 try:
                     json.loads(action)
+                    data_literal = True
                 except json.JSONDecodeError:
-                    return action
-            raise ValueError(
-                "OSWorld data literals and JSON action descriptions are not executable actions. "
-                "Return one self-contained executable Python program or a standalone "
-                "DONE, FAIL, or WAIT marker. No environment action was executed."
-            )
+                    pass
+            if data_literal:
+                raise ValueError(
+                    "OSWorld data literals and JSON action descriptions are not executable actions. "
+                    "Return one self-contained executable Python program or a standalone "
+                    "DONE, FAIL, or WAIT marker. No environment action was executed."
+                )
+        if self._gui_only:
+            from .gui_policy import validate_pyautogui_program
+
+            validate_pyautogui_program(action)
         return action
 
     def step(self, action: str) -> Transition:

@@ -152,8 +152,8 @@ class OSWorldAdapterTests(unittest.TestCase):
         relative = replace(spec, workload=replace(spec.workload, cases=[{**self.case, "config_file": "task.json"}],
                                                   params={"env_kwargs": {"path_to_vm": "vm/image.vmx"}}))
         resolved = relative.resolved(Path(self.temporary.name))
-        self.assertEqual(resolved.workload.cases[0]["config_file"], str(self.path))
-        self.assertEqual(resolved.workload.params["env_kwargs"]["path_to_vm"], str(Path(self.temporary.name) / "vm/image.vmx"))
+        self.assertEqual(resolved.workload.cases[0]["config_file"], str(self.path.resolve()))
+        self.assertEqual(resolved.workload.params["env_kwargs"]["path_to_vm"], str(Path(self.temporary.name).resolve() / "vm/image.vmx"))
         with self.assertRaisesRegex(ValueError, "provisioned VM"):
             replace(spec, workload=replace(spec.workload, params={})).validate()
         with self.assertRaisesRegex(ValueError, "max_total_tokens"):
@@ -187,6 +187,44 @@ class OSWorldAdapterTests(unittest.TestCase):
         self.assertEqual(self.env.actions, [("import pyautogui\npyautogui.click(20, 30)", 0.0)])
         self.assertFalse(transition.terminated)
         self.assertFalse(session.evaluate())
+
+    def test_gui_only_aliases_are_dispatched_unchanged_and_policy_is_identified(self):
+        native = self.session()
+        self.params['gui_only'] = True
+        session = self.session()
+        self.assertNotEqual(session.source_identity, native.source_identity)
+        self.assertEqual(session.source_identity['action_policy']['name'], 'gui_only_pyautogui')
+        self.assertIn('import aliases are supported', session.system_prompt)
+        session.reset(trial_index=0)
+        code = "import pyautogui as p, time\np.click(405,75)\ntime.sleep(0.8)"
+        action = session.parse_response(code)
+        self.assertEqual(action, code)
+        session.step(action)
+        self.assertEqual(self.env.actions, [(code, 0.0)])
+        with self.assertRaisesRegex(ValueError, 'terminal launch'):
+            session.parse_response("import pyautogui as p\np.hotkey('ctrl','alt','t')")
+        with self.assertRaisesRegex(ValueError, 'mouse/keyboard'):
+            session.parse_response('open("file.xlsx")')
+        self.assertEqual(len(self.env.actions), 1)
+
+    def test_gui_only_requires_a_boolean_before_environment_creation(self):
+        self.params['gui_only'] = 'true'
+        with self.assertRaisesRegex(TypeError, 'gui_only'):
+            self.session()
+        self.assertIsNone(self.env)
+
+    def test_gui_only_can_be_selected_through_the_public_spec(self):
+        from dataclasses import replace
+        from vrlbench import ModelSpec, SimulationSpec, WorkloadSpec, plan
+
+        params = {**self.params, 'gui_only': True}
+        spec = SimulationSpec(WorkloadSpec('osworld', [self.case], params), ModelSpec('fixture'),
+                              trials=1, max_environment_steps=2)
+        self.assertEqual(plan(spec)['model_calls_executed'], 0)
+        self.assertIsNone(self.env)
+        invalid = replace(spec, workload=replace(spec.workload, params={**params, 'gui_only': 'true'}))
+        with self.assertRaisesRegex(ValueError, 'gui_only'):
+            invalid.validate()
 
     def test_done_is_not_success_and_evaluation_cached(self):
         session = self.session()

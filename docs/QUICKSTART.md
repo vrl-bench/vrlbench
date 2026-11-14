@@ -1,5 +1,277 @@
 # Quick start
 
+## Run a native benchmark comparison
+
+On Linux x86_64 with Python 3.12, Git, curl, and Chrome's system libraries:
+
+```bash
+python -m pip install -r src/vrlbench/requirements/runner-py312.lock.txt
+python -m pip install --no-deps -e .
+vrlbench setup miniwob --root external/miniwob
+export OPENAI_API_KEY=your-key
+vrlbench doctor --preset miniwob-visual-v1 \
+  --environment external/miniwob/environment.json --model YOUR_VISION_MODEL_NAME
+vrlbench batch --preset miniwob-visual-v1 \
+  --environment external/miniwob/environment.json --model YOUR_VISION_MODEL_NAME \
+  --methods retry reflexion --jobs 2 --output-dir runs/miniwob-visual
+vrlbench compare runs/miniwob-visual/retry runs/miniwob-visual/reflexion \
+  --statistics --analysis-unit task
+vrlbench replay runs/miniwob-visual/retry runs/miniwob-visual/reflexion \
+  --output runs/miniwob-visual/replay.html
+```
+
+Replace the model placeholder; use `--base-url` on `doctor` and `batch` for a
+compatible endpoint. Credentials remain in the shell, outside the configuration.
+Setup fetches the pinned Synapse revision, applies the released runtime overlay,
+installs the locked environment dependencies in an isolated Python 3.12 venv,
+and downloads Chrome/ChromeDriver 146.0.7680.165. It performs an actual native
+browser reset before writing `environment.json`. Logs stay in the setup root.
+The simulator's OpenHands dependencies remain separate from environment dependencies.
+If matching browser binaries are already installed, pass both `--chrome PATH`
+and `--chromedriver PATH` to setup. Their versions are recorded. On hosts
+without Chrome's system libraries, install those through the system package
+manager or use the container workflow below. Setup does not install system packages.
+
+The installed `miniwob-visual-v1` preset selects **16 native cases: eight task families and two episode
+seeds per family**, with two trials and twelve action opportunities per trial.
+It includes typing, options, checkboxes, numeric feedback, and a slider.
+These are original MiniWoB tasks and native grades, not replacement fixtures.
+The equivalent editable config is `examples/configs/miniwob_visual.json`.
+This selection verifies the workflow; expand `workload.cases` and the declared
+budgets for a research evaluation. It is not the full MiniWoB task collection.
+`include_screenshot: true` sends the native browser PNG alongside HTML to the
+model; `capture_observations` separately controls replay recording.
+
+Each case runs in its own fresh worker. A case's Retry run completes before
+other memory conditions reuse its actual memory-free first trial. Successful
+T1 cases make no additional actor calls for the other condition. Aggregate
+`evaluation.json` files use the normal inspect, compare, statistics, and replay
+tools. `summary.json` records coverage, per-condition results, and execution
+costs including previous attempts. Provider calls copied from T1 are not billed
+again in the new condition's request ledger.
+
+To recover an interrupted batch, repeat exactly the same command with `--resume`.
+Completed jobs, including completed **unsolved** cases, are reused. Infrastructure
+failures get a new `attempt-*` directory; earlier attempts and logs remain intact.
+Changes to the model, cases, methods, budgets, environment binding, harness source,
+or local plugin source require a new output directory. Concurrency may change on
+resume. Shared WebArena sites and OSWorld VMs require `--jobs 1`.
+
+For a custom memory implementation, retain the same environment manifest and
+use the [existing factory workflow](DEVELOPMENT.md#bring-your-own-memory) with
+`run --environment external/miniwob/environment.json`. The built-in batch
+method list currently selects released reference methods.
+
+## Container workflow
+
+Build the self-contained MiniWoB runner from the repository root. Docker is
+required; model inference still uses your existing API endpoint.
+
+```bash
+docker build -f docker/miniwob/Dockerfile -t vrlbench:miniwob .
+mkdir -p runs
+docker run --rm --init --shm-size=1g \
+  --user "$(id -u):$(id -g)" -e OPENAI_API_KEY \
+  -v "$PWD/runs:/runs" vrlbench:miniwob \
+  batch --preset miniwob-visual-v1 \
+  --environment /opt/miniwob/environment.json --model YOUR_VISION_MODEL_NAME \
+  --methods retry reflexion --jobs 2 --output-dir /runs/miniwob-visual
+```
+
+The image contains the pinned environment, Chrome/ChromeDriver, and locked
+simulator dependencies. Build does not make model calls. Keep the resolved image
+ID with results (`docker image inspect vrlbench:miniwob --format '{{.Id}}'`).
+For a fixed base image, build with `--build-arg BASE_IMAGE=python@sha256:YOUR_DIGEST`.
+The default Python base tag and Debian security updates can change; do not claim
+that separate rebuilds are byte-identical. The Docker build context uses an
+allowlist and excludes local credentials, output data, and external checkouts.
+
+Use the same image, volume mount and user options to `inspect`, `compare`, and
+`replay` the `/runs/miniwob-visual/retry` and `reflexion` directories. These
+commands do not need `OPENAI_API_KEY`. Add `--resume` to the original batch
+command to continue in the same output directory.
+
+## Screenshot-only GUI evaluation
+
+`miniwob-gui-v1` uses the same 16 native cases as `miniwob-visual-v1`, but
+supplies only task text and 640 × 480 screenshots. The actor has structured
+`click(x,y)`, `type(text)`, `press(key)`, `drag(x,y,to_x,to_y)`, and `stop()` tools; HTML
+and XPath are excluded. Every pointer action goes through Chrome's native
+input dispatcher and MiniWoB's native step and reward. Typing acts on the
+focused control: the agent must locate and click an input before typing.
+`stop()` ends an unsuccessful attempt through MiniWoB's native termination;
+the agent cannot declare its own success or reward.
+This action-budget track uses MiniWoB's native, time-independent raw reward.
+The wall-clock timeout is suspended; the native raw and discounted terminal
+rewards are both recorded so model latency cannot turn a completed task into
+a failure. This reward mode is part of the environment identity.
+Chrome session creation is attempted at most three times during a native
+reset, before acting, with the same seed. The attempt count is recorded
+in `environment_metadata.native_browser_start_attempts`; other reset failures
+and provider failures propagate without automatic retry.
+
+```bash
+vrlbench batch --preset miniwob-gui-v1 \
+  --environment external/miniwob/environment.json --model YOUR_VISION_MODEL_NAME \
+  --methods retry reflexion --jobs 2 --output-dir runs/pixel-gui
+vrlbench replay runs/pixel-gui/retry runs/pixel-gui/reflexion \
+  --output runs/pixel-gui/replay.html
+```
+
+This is a distinct observation/action track. Use a fresh Retry baseline for
+memory comparisons; the earlier HTML/XPath results are not interchangeable.
+The preset has two trials and twenty action opportunities per trial. The
+OpenHands GUI tool requests one named environment tool call and disables
+parallel tool calls at the actor request layer;
+memory-writer requests retain their own protocol settings. A supported
+vision/tool-calling model is required; protocol validity does not guarantee
+task success. Inspect actual screenshots, executed actions and native scores.
+
+For GPT-6 vision models, select the Responses API for tool calling. If the
+installed OpenHands/LiteLLM model catalog does not yet recognize the model,
+declare its verified capabilities explicitly so the SDK preserves images:
+
+```json
+{
+  "name": "gpt-6.1-terra",
+  "request_options": {
+    "api_mode": "responses",
+    "reasoning_effort": "medium",
+    "temperature": null,
+    "capability_overrides": {
+      "supports_vision": true,
+      "supports_responses_api": true,
+      "supports_reasoning_effort": true,
+      "supports_sampling_params": false
+    }
+  }
+}
+```
+
+This is the `model` section of a simulation configuration. Set
+`actor.params.max_output_tokens` to 4096 to leave room for reasoning and action
+arguments. SDK capability fields are kept out of native memory-writer requests;
+`api_mode: "responses"` also selects Responses for those calls. Native task
+evaluators retain their independently configured model and protocol.
+Check your endpoint with an actual screenshot and tool call before scaling up;
+listing a model in `/models` alone does not establish compatibility. See
+[OpenAI's model migration guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).
+
+For long GUI trials, configure the same bounded context policy in both arms
+before starting. The default OpenHands view retains all prior observations;
+this can exceed endpoint image limits and accumulate large input costs.
+
+```json
+{
+  "actor": {
+    "name": "openhands",
+    "params": {
+      "max_output_tokens": 4096,
+      "condenser": {
+        "entrypoint": "vrlbench.actors.observation_context:preserve_latest_context",
+        "kwargs": {"recent_observations": 2, "history_chars": 1000, "image_history": 2}
+      }
+    }
+  }
+}
+```
+
+This deterministic SDK view keeps the task, action history, latest real
+observation, and recent rejection feedback. It retains two recent screenshot
+events and short head/tail snippets of older tool observations; raw SDK events
+and screenshots remain intact. No extra summarization model calls are needed.
+The actor checks that the exact latest observation text and image are present
+before each action request, and that vision is active when images are required.
+Missing current state is an infrastructure failure, not a scored task failure.
+Generic summarizers can forget the latest observation under token pressure;
+the pre-request check rejects this instead of acting on an old screen.
+Set `runtime_env.OH_PERSISTENCE_DIR` to a writable run-specific directory
+when the host's home quota is limited.
+
+Reflexion verifies all original screenshots, then attaches at most 8 uniformly
+sampled frames, including the first and last, to its writer. The prompt lists
+their original observation indices and explicitly states any omissions; it
+retains the textual interaction log. Configure a different endpoint limit with
+`memory.params.max_images` (integer, at least 2), and keep it fixed throughout
+the comparison. Short trajectories retain every frame. Its trajectory text
+defaults to a 60,000-character budget: long inputs keep indexed step order and
+bounded head/tail snippets of observations and long actions, with omissions
+explicitly marked. Original evidence is retained. Set
+`memory.params.max_trajectory_chars` to `null` for the full original transcript
+only when the endpoint can accept it. This is a bounded-input adaptation of
+the reference writer for long interactive trajectories.
+
+For reasoning models, give the writer its own sufficient output allowance:
+
+```json
+{
+  "memory": {
+    "name": "reflexion",
+    "params": {"max_tokens": 4096, "max_images": 8, "max_trajectory_chars": 60000}
+  }
+}
+```
+
+## First multimodal GUI evaluation
+
+The bundled browser smoke task runs a real Chromium page, sends native
+screenshots to the OpenHands actor, executes coordinate clicks, and grades the
+resulting page state. It exercises the vision, tool, reset, accounting, and
+recording pipeline with two small tasks before provisioning a benchmark site
+or desktop VM. Use a tool-calling vision model and Python 3.12+.
+The `gui-smoke` preset is included in the installed package and selects two
+cases with at most two trials and four actions per trial. The JSON equivalent
+is `examples/configs/gui_smoke.json` for editing these limits.
+
+```bash
+python -m pip install -e '.[runtime,gui]'
+python -m playwright install chromium
+export OPENAI_API_KEY=your-key
+vrlbench doctor --preset gui-smoke --model YOUR_VISION_MODEL_NAME
+vrlbench run --preset gui-smoke \
+  --model YOUR_VISION_MODEL_NAME --output-dir runs/my-gui-smoke
+vrlbench inspect runs/my-gui-smoke
+vrlbench replay runs/my-gui-smoke
+```
+
+Replace `YOUR_VISION_MODEL_NAME` with your model name in both commands.
+Use `--base-url` for a compatible model endpoint.
+On Linux, install the Chromium system libraries using your system's package
+manager if Playwright reports missing shared libraries. The two tasks verify
+installation and execution, while MiniWoB, WebShop, WebArena, and OSWorld
+provide the benchmark workloads described below.
+
+Before a new evaluation, check the selected configuration from the same shell
+and Python environment that will run it:
+
+```bash
+vrlbench doctor --config examples/configs/osworld_retry.json
+vrlbench run --config examples/configs/osworld_retry.json \
+  --model YOUR_VISION_MODEL_NAME --api-key-env OPENAI_API_KEY \
+  --output-dir runs/my-desktop-evaluation
+```
+
+`doctor` reports missing local prerequisites without starting a VM, importing
+an environment, or calling a model. Exit code 1 means prerequisites are missing;
+exit code 2 means the configuration is invalid. `run` uses the same evaluator,
+budgets, result format, and exit codes as `simulate`. `--model`, `--base-url`,
+and `--api-key-env` override model settings for `doctor`, `run`, and `simulate`. Credentials are
+read from the named shell variable. Each run needs a new or empty output directory.
+An online smoke run is still needed to verify endpoint vision/tool support and
+native task resets after the local checks pass.
+
+For visual WebArena agents, set `workload.params.include_screenshot` to `true`.
+Each reset and action then supplies the native browser PNG alongside the text
+observation. Action IDs continue to come from the text. Compare visual methods
+using the same observation setting and a newly generated matching Retry source.
+OSWorld already supplies native screenshots and their pixel dimensions.
+
+The OpenHands actor preserves complete text for environment messages through
+Chat and Responses serialization. Before provider admission, it checks that the
+serialized current observation contains the full text and its matching image.
+An explicit context policy may shorten older observations; the recorded SDK
+events retain their original content.
+
 [Back to the README](../README.md)
 
 Choose an interactive environment, model, and memory system, then use one workflow:
@@ -27,7 +299,8 @@ replaying saved results does not call a model.
 
 Keep benchmark downloads under `external/` and evaluation outputs under
 `runs/`; neither belongs in version control. Run commands from the repository
-root. The SDK does not download benchmark assets or browser binaries.
+root. The evaluator does not download benchmark assets or browser binaries during a run;
+`setup miniwob` is the explicit provisioning step.
 
 <a id="miniwob"></a>
 
@@ -499,6 +772,13 @@ to `DesktopEnv`, including `provider_name` and `snapshot_name`. Use a
 vision-capable model: the current screenshot is sent with the task text and
 visible accessibility or terminal output. Actions execute through the native
 `pyautogui` interface inside the VM, not on the host.
+To restrict programs to direct mouse, keyboard and sleep calls, set
+`params.gui_only` to `true`. This optional policy supports module and function
+import aliases, such as `import pyautogui as p` or
+`from pyautogui import click as tap`, and executes the admitted
+program unchanged. It excludes other imports, programmatic file calls and
+terminal-launch hotkeys; its source hash is recorded in the environment
+identity. Omitting this option retains the native Python action interface.
 Each observation includes the current PNG's native dimensions. Actions use
 absolute pixels from the top-left origin; the adapter does not resize the image
 or rescale the actor's coordinates.

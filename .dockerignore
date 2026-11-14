@@ -1,0 +1,15 @@
+**
+!pyproject.toml
+!README.md
+!LICENSE
+!THIRD_PARTY_NOTICES
+!src/
+!src/**
+!examples/
+!examples/configs/
+!examples/configs/*.json
+!docker/
+!docker/miniwob/
+!docker/miniwob/Dockerfile
+**/__pycache__/
+**/*.pyc

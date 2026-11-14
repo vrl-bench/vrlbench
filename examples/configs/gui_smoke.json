@@ -1,0 +1,16 @@
+{
+  "workload": {
+    "name": "browser_smoke",
+    "cases": [{"case_id": "save", "target": "Save"}, {"case_id": "cancel", "target": "Cancel"}],
+    "factory": {"entrypoint": "vrlbench.environments.browser_smoke:create_backend"},
+    "params": {"capture_observations": true, "uses_model": true, "requires_vision": true}
+  },
+  "model": {"name": "YOUR_VISION_MODEL_NAME", "api_key_env": "OPENAI_API_KEY"},
+  "memory": {"name": "retry"},
+  "actor": {"name": "openhands", "params": {"max_output_tokens": 256}},
+  "trials": 2,
+  "max_environment_steps": 4,
+  "timeout_seconds": 300,
+  "require_provider_usage": true,
+  "output_dir": "../../runs/gui_smoke"
+}

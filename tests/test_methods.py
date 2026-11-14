@@ -80,6 +80,56 @@ class LazyMethodTests(unittest.TestCase):
 
 @unittest.skipUnless(HAS_RUNTIME, "Install the runtime extra for reference methods")
 class MethodTests(unittest.TestCase):
+    def test_bounded_reflection_keeps_step_order_and_original_evidence(self):
+        from vrlbench.runtime.er.reflexion import Reflexion, _bounded_interaction_log
+        from vrlbench.runtime.trajectory import parse_policy_trajectory
+        trace = render_trajectory(task='Compare and buy', initial_observation='initial ' * 20000,
+            steps=[{'action': f'goto [page-{i}]', 'observation': f'page {i} ' * 15000}
+                   for i in range(60)], close_reason='interaction_limit')
+        before = parse_policy_trajectory(trace)
+        bounded = _bounded_interaction_log(trace, 60000)
+        self.assertLessEqual(len(bounded), 60000)
+        positions = [bounded.index(f'Step {i + 1} action:\ngoto [page-{i}]') for i in range(60)]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('[... omitted ...]', bounded)
+        self.assertEqual(parse_policy_trajectory(trace), before)
+        slot = Reflexion(max_trajectory_chars=60000)
+        with patch('vrlbench.runtime.er.reflexion.complete', return_value='Plan') as complete:
+            slot.on_trial_end(trace, success=False, model='fake', trial_index=0,
+                              total_trials=2, metadata={'benchmark':'webarena'})
+            self.assertIn(bounded, complete.call_args.args[0])
+        for invalid in (0, 1023, True, 2000.5):
+            with self.assertRaises(ValueError): Reflexion(max_trajectory_chars=invalid)
+        self.assertIsNone(Reflexion(max_trajectory_chars=None).max_trajectory_chars)
+
+    def test_long_visual_reflection_is_bounded_and_verifies_omitted_frames(self):
+        from test_interactive import PNG
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            refs = []
+            for i in range(61):
+                p = root / f'{i}.png'; p.write_bytes(PNG)
+                refs.append({'observation_index': i, 'path': str(p),
+                             'sha256': hashlib.sha256(PNG).hexdigest()})
+            metadata = {'benchmark': 'osworld', 'visual_observation_root': str(root),
+                        'screenshots': refs, 'has_future_trial': True}
+            from vrlbench.runtime.er.reflexion import Reflexion
+            slot = Reflexion(max_images=4)
+            with patch('vrlbench.runtime.er.reflexion.complete', return_value='Plan') as complete:
+                slot.on_trial_end(self.trace(), success=False, model='fake', trial_index=0,
+                                  total_trials=2, metadata=metadata)
+                args = complete.call_args
+                self.assertEqual(len(args.kwargs['images']), 4)
+                self.assertIn('0, 20, 40, 60', args.args[0])
+                self.assertIn('Intermediate frames are omitted', args.args[0])
+                (root / '1.png').write_bytes(PNG + b'changed')
+                with self.assertRaisesRegex(ValueError, 'content hash'):
+                    slot.on_trial_end(self.trace(), success=False, model='fake', trial_index=0,
+                                      total_trials=2, metadata=metadata)
+                self.assertEqual(complete.call_count, 1)
+            for invalid in (0, 1, True, 2.5):
+                with self.assertRaises(ValueError): Reflexion(max_images=invalid)
+
     def test_visual_reflection_receives_original_actor_images(self):
         from test_interactive import PNG
 

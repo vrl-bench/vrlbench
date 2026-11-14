@@ -1,0 +1,96 @@
+{
+  "workload": {
+    "name": "miniwob",
+    "cases": [
+      {
+        "task": "click-button",
+        "episode": 0
+      },
+      {
+        "task": "click-button",
+        "episode": 1
+      },
+      {
+        "task": "click-link",
+        "episode": 0
+      },
+      {
+        "task": "click-link",
+        "episode": 1
+      },
+      {
+        "task": "enter-text",
+        "episode": 0
+      },
+      {
+        "task": "enter-text",
+        "episode": 1
+      },
+      {
+        "task": "click-checkboxes",
+        "episode": 0
+      },
+      {
+        "task": "click-checkboxes",
+        "episode": 1
+      },
+      {
+        "task": "click-option",
+        "episode": 0
+      },
+      {
+        "task": "click-option",
+        "episode": 1
+      },
+      {
+        "task": "focus-text",
+        "episode": 0
+      },
+      {
+        "task": "focus-text",
+        "episode": 1
+      },
+      {
+        "task": "guess-number",
+        "episode": 0
+      },
+      {
+        "task": "guess-number",
+        "episode": 1
+      },
+      {
+        "task": "use-slider",
+        "episode": 0
+      },
+      {
+        "task": "use-slider",
+        "episode": 1
+      }
+    ],
+    "params": {
+      "headless": true,
+      "trial_seed_mode": "paired_trial",
+      "capture_observations": true,
+      "include_screenshot": true
+    }
+  },
+  "memory": {
+    "name": "retry"
+  },
+  "model": {
+    "name": "YOUR_VISION_MODEL_NAME",
+    "api_key_env": "OPENAI_API_KEY",
+    "request_options": {}
+  },
+  "trials": 2,
+  "max_environment_steps": 12,
+  "require_provider_usage": true,
+  "timeout_seconds": 600,
+  "output_dir": "../../runs/miniwob_visual",
+  "actor": {
+    "name": "openhands",
+    "params": {
+      "max_output_tokens": 1024
+    }
+  }
+}

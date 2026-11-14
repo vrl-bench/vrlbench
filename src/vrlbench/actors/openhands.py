@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import Any, Callable, ClassVar, Mapping
+from typing import Any, Callable, ClassVar, Mapping, Literal
 from uuid import uuid4
 
 from vrlbench.environments.interactive import InteractiveActor, Observation, Session
@@ -23,7 +23,7 @@ if sys.version_info < (3, 12):
     raise RuntimeError("The OpenHands actor requires Python 3.12 or newer")
 
 try:
-    from pydantic import Field, PrivateAttr
+    from pydantic import Field, PrivateAttr, StrictInt
     from openhands.sdk import Agent, LLM
     from openhands.sdk.context import AgentContext
     from openhands.sdk.context.condenser import CondenserBase
@@ -44,6 +44,40 @@ class EnvironmentObservation(SDKObservation):
     pass
 
 
+class _EnvironmentMessage(Message):
+    """Serialize the projected environment text without a second truncation.
+
+    OpenHands 1.59 applies a 50,000-character limit to tool text. The context
+    policy already controls historical observations; the current state must
+    remain complete. Scope this override to environment messages, leaving the
+    SDK and persisted events unchanged.
+    """
+
+    def _maybe_truncate_tool_text(self, text: str) -> str:
+        return text
+
+
+def _payload_strings(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _payload_strings(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _payload_strings(item)
+
+
+class GUIAction(Action):
+    action: Literal['click','type','press','drag','stop']
+    x: StrictInt | None = None
+    y: StrictInt | None = None
+    to_x: StrictInt | None = None
+    to_y: StrictInt | None = None
+    text: str | None = None
+    key: str | None = None
+
+
 _TRIAL_ACTORS: dict[str, "OpenHandsActor"] = {}
 
 
@@ -57,7 +91,19 @@ class EnvironmentExecutor(ToolExecutor):
         # SDK tools may execute on a worker thread. Keep native evaluator
         # model calls on this same case/trial usage ledger.
         with runtime_llm.token_budget_scope(self.actor._token_ledger):
-            return self.actor.execute_environment_action(action.action)
+            if isinstance(action, GUIAction):
+                value = action.model_dump(exclude_none=True, exclude={'kind'})
+                fields = {'click': {'x','y'}, 'drag': {'x','y','to_x','to_y'},
+                          'type': {'text'}, 'press': {'key'}, 'stop': set()}[action.action]
+                # Some structured-output endpoints emit empty optional strings.
+                # Remove only empty, irrelevant placeholders, never coordinates
+                # or a nonempty action argument, and never synthesize a click.
+                value = {k:v for k,v in value.items()
+                         if k == 'action' or k in fields or v != ''}
+                raw = json.dumps(value)
+            else:
+                raw = action.action
+            return self.actor.execute_environment_action(raw)
 
 
 class EnvironmentActionTool(ToolDefinition):
@@ -66,11 +112,16 @@ class EnvironmentActionTool(ToolDefinition):
     @classmethod
     def create(cls, conv_state: Any, **_: Any) -> list["EnvironmentActionTool"]:
         actor = _TRIAL_ACTORS[str(conv_state.id)]
-        return [cls(description=("Execute one native action in the current task environment. "
+        gui = actor.session.source_identity.get('action_space') in {'gui_json_v1','gui_json_v2'}
+        description = ('Execute one GUI action using the structured fields directly. '
+                       'Set action to click, type, press, drag or stop; provide only the corresponding fields. '
+                       'Coordinates are absolute pixels in the current screenshot.\n' + actor.session.system_prompt
+                       if gui else ("Execute one native action in the current task environment. "
                                  "The action argument must be a complete native statement, "
                                  "preserving prefixes and quoted string arguments.\n" +
-                                 actor.session.system_prompt),
-                    action_type=EnvironmentAction, observation_type=EnvironmentObservation,
+                                 actor.session.system_prompt))
+        return [cls(description=description,
+                    action_type=GUIAction if actor.session.source_identity.get('action_space') in {'gui_json_v1','gui_json_v2'} else EnvironmentAction, observation_type=EnvironmentObservation,
                     executor=EnvironmentExecutor(actor))]
 
 
@@ -88,6 +139,8 @@ class AccountedLLM(LLM):
         except BaseException as exc:
             self._actor._fatal_error = exc
             raise
+        if self._actor._is_actor_request(tools) and self._actor.session.source_identity.get('action_space') in {'gui_json_v1','gui_json_v2'}:
+            kwargs['tool_choice'] = {'type':'function','function':{'name':'environment_action'}}
         try:
             response = super().generate(messages=messages, tools=tools, **kwargs)
         except BaseException as exc:
@@ -107,6 +160,8 @@ class AccountedLLM(LLM):
         except BaseException as exc:
             self._actor._fatal_error = exc
             raise
+        if self._actor._is_actor_request(tools) and self._actor.session.source_identity.get('action_space') in {'gui_json_v1','gui_json_v2'}:
+            kwargs['tool_choice'] = {'type':'function','function':{'name':'environment_action'}}
         try:
             response = await super().agenerate(messages=messages, tools=tools, **kwargs)
         except BaseException as exc:
@@ -165,6 +220,8 @@ class OpenHandsActor(InteractiveActor):
         self._event_digest = hashlib.sha256()
         self._event_stream: Any = None
         self._image_references: dict[str, dict[str, Any]] = {}
+        self._latest_model_text: str | None = None
+        self._latest_model_image: str | None = None
         self._response: dict[str, Any] | None = None
         self._request_count = 0
         self._fatal_error: BaseException | None = None
@@ -187,7 +244,8 @@ class OpenHandsActor(InteractiveActor):
             kwargs["api_mode"] = "chat"
         options = dict(config.get("request_options") or {})
         # Protocol and output limits belong to the SDK and actor, not a transport map.
-        protocol = {"model", "messages", "tools", "stream", "num_retries",
+        protocol = {"model", "messages", "input", "instructions", "previous_response_id",
+                    "conversation", "prompt", "tools", "stream", "num_retries",
                     "max_tokens", "max_completion_tokens", "max_output_tokens",
                     "api_key", "base_url", "api_version", "usage_id",
                     "provider_connection_id", "auth_type", "subscription_vendor",
@@ -208,6 +266,8 @@ class OpenHandsActor(InteractiveActor):
         if unknown:
             raise ValueError(f"OpenHands request_options are not SDK LLM fields: {sorted(unknown)}")
         kwargs.update(options)
+        if self.session.source_identity.get('action_space') in {'gui_json_v1','gui_json_v2'}:
+            kwargs['litellm_extra_body'] = {**kwargs.get('litellm_extra_body', {}), 'parallel_tool_calls': False}
         if self.sdk_llm_factory is None:
             llm = AccountedLLM(**kwargs)
             llm._actor = self
@@ -226,6 +286,41 @@ class OpenHandsActor(InteractiveActor):
         actor_request = self._is_actor_request(tools)
         if actor_request:
             self.ledger.require_step()
+            candidates = [i for i, message in enumerate(messages) if any(
+                isinstance(part, TextContent) and part.text == self._latest_model_text
+                for part in message.content)] if self._latest_model_text is not None else []
+            if not candidates:
+                raise RuntimeError('OpenHands context lost the current observation text; stopped before the model request')
+            if self._latest_model_image is not None:
+                if not llm.vision_is_active():
+                    raise RuntimeError('The current observation requires an active vision-capable model')
+                candidates = [i for i in candidates if any(
+                    isinstance(part, ImageContent) and self._latest_model_image in part.image_urls
+                    for part in messages[i].content)]
+                if not candidates:
+                    raise RuntimeError('OpenHands context lost the current observation image; stopped before the model request')
+            projected = [
+                _EnvironmentMessage.model_construct(**{
+                    name: getattr(message, name) for name in Message.model_fields})
+                if message.role == 'tool' and message.name == EnvironmentActionTool.name
+                else message
+                for message in messages
+            ]
+            current = projected[candidates[-1]]
+            vision = llm.vision_is_active()
+            if getattr(llm, 'api_mode', 'chat') == 'responses':
+                payload = current.to_responses_dict(vision_enabled=vision)
+            else:
+                payload = current.to_chat_dict(
+                    cache_enabled=False, vision_enabled=vision, function_calling_enabled=True,
+                    force_string_serializer=getattr(llm, 'force_string_serializer', False),
+                    send_reasoning_content=False)
+            strings = list(_payload_strings(payload))
+            if not any(self._latest_model_text in text for text in strings):
+                raise RuntimeError('OpenHands serialization clipped the current observation text; stopped before the model request')
+            if self._latest_model_image is not None and self._latest_model_image not in strings:
+                raise RuntimeError('OpenHands serialization lost the current observation image; stopped before the model request')
+            messages[:] = projected
         request = self.request_observer.before_request(messages, llm.max_output_tokens)
         self._request_count += 1
         if actor_request:
@@ -264,6 +359,8 @@ class OpenHandsActor(InteractiveActor):
         return str(self._response["feedback"])
 
     def _sdk_content(self, observation: Observation, text: str) -> list[Any]:
+        self._latest_model_text = text
+        self._latest_model_image = None
         content: list[Any] = [TextContent(text=text)]
         if observation.image is not None:
             mime = "image/png" if observation.image.startswith(b"\x89PNG") else "image/jpeg"
@@ -271,6 +368,7 @@ class OpenHandsActor(InteractiveActor):
             digest = hashlib.sha256(observation.image).hexdigest()
             reference = next(item for item in reversed(self.screenshots) if item["sha256"] == digest)
             self._image_references[url] = reference
+            self._latest_model_image = url
             content.append(ImageContent(image_urls=[url]))
         return content
 
@@ -348,6 +446,13 @@ class OpenHandsActor(InteractiveActor):
                 "Only the environment determines task success.\n\nNative action instructions:\n"
                 + self.session.system_prompt),
         }
+        if self.session.source_identity.get('action_space') in {'gui_json_v1','gui_json_v2'}:
+            agent_kwargs['system_prompt'] = (
+                'Use exactly one environment_action tool per response. Its fields directly describe the GUI action; '
+                'Work autonomously; attempt the task before stopping. Use stop if stuck. Do not ask the user for instructions. '
+                'do not nest a JSON string in action. Click to focus an input before typing. '
+                'Use screenshots to locate controls. Only native environment grading establishes success.\n'
+                + self.session.system_prompt)
         if self.condenser_spec is not None:
             from vrlbench.plugins import create_plugin
 
@@ -416,6 +521,7 @@ class OpenHandsActor(InteractiveActor):
     def _metadata_snapshot(self) -> dict[str, Any]:
         return {**super()._metadata_snapshot(), "actor_name": "openhands",
                 "actor_sdk_version": self.sdk_version,
+                "observation_transport": "complete_environment_text_v1",
                 "sdk_requests": self._request_count,
                 "sdk_event_log": self._raw_event_reference(),
                 "actor_trajectory_format": "openhands_events_text_projection_v1",

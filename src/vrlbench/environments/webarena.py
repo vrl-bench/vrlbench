@@ -125,6 +125,9 @@ class WebArenaSession:
         }
         self._identity = json.dumps(self.source_identity, sort_keys=True)
         observation_type = params.get("observation_type", "accessibility_tree")
+        self.include_screenshot = params.get("include_screenshot", False)
+        if type(self.include_screenshot) is not bool:
+            raise ValueError("WebArena include_screenshot must be a boolean")
         if observation_type not in {"accessibility_tree", "html"}:
             raise ValueError("WebArena supports accessibility_tree or html observations")
         headless = params.get("headless", True)
@@ -149,7 +152,12 @@ class WebArenaSession:
         error = info.get("fail_error") if isinstance(info, dict) else None
         if error:
             text += f"\nBrowser action error: {error}"
-        return Observation(text=text)
+        image = None
+        if self.include_screenshot:
+            image = self.env.page.screenshot(type="png")
+            if not isinstance(image, bytes) or not image.startswith(b"\x89PNG\r\n\x1a\n"):
+                raise RuntimeError("WebArena returned no valid PNG screenshot")
+        return Observation(text=text, image=image)
 
     def reset(self, *, trial_index: int):
         from .interactive import TaskState

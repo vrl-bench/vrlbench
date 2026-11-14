@@ -294,7 +294,16 @@ class InteractiveActor:
             raise RuntimeError("a completed trial cannot both terminate and truncate")
         if self.success != (self.close_reason == "environment_success"):
             raise RuntimeError("verified outcome and trial close state differ")
-        return self._metadata_snapshot()
+        metadata = self._metadata_snapshot()
+        native_hook = getattr(self.session, "get_trial_metadata", None)
+        if callable(native_hook):
+            native = native_hook()
+            if not isinstance(native, Mapping):
+                raise TypeError("environment trial metadata must be a mapping")
+            # Keep native scoring/reset evidence without allowing an adapter
+            # to overwrite the actor's authoritative interaction ledger.
+            metadata["environment_metadata"] = deepcopy(dict(native))
+        return metadata
 
     def _metadata_snapshot(self) -> dict[str, Any]:
         visual = ({"visual_observation_root": str((self.artifact_dir / f"trial_{self.trial_index:03d}").resolve())}

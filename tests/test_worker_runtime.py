@@ -14,6 +14,7 @@ import tempfile
 import textwrap
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -76,6 +77,46 @@ class PluginTests(unittest.TestCase):
 
 @unittest.skipUnless(HAS_RUNTIME, "Install the runtime extra to execute reference-loop tests")
 class WorkerTests(unittest.TestCase):
+    def test_responses_memory_preserves_images_usage_and_model_identity(self):
+        from vrlbench.worker import _ClientProxy
+        from vrlbench.provider_usage import ProviderUsageJournal, read_provider_usage
+        from vrlbench.runtime import llm
+        from vrlbench.runtime.budget import TokenUsageLedger
+        from vrlbench.runtime.llm import ProviderIdentityMismatch
+        calls = []
+        def chat(**kwargs):
+            raise AssertionError('memory must use the declared Responses API')
+        def responses(**kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(id='resp-test', status='completed', output_text='A concrete plan',
+                model='gpt-6.1-terra' if len(calls)==1 else 'gpt-6.1-terra-2026-10-26',
+                usage=SimpleNamespace(input_tokens=11, output_tokens=7, total_tokens=18))
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=chat)),
+                                 responses=SimpleNamespace(create=responses))
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {
+            'VEX2_ALLOWED_RESPONSE_MODELS':'gpt-6.1-terra',
+            'VEX2_ALLOWED_RESPONSE_MODEL_PREFIXES':''}):
+            journal = ProviderUsageJournal(Path(tmp))
+            proxy = _ClientProxy(lambda:client, {'api_mode':'responses', 'temperature':None,
+                'reasoning_effort':'medium', 'capability_overrides':{'supports_vision':True}}, journal)
+            ledger = TokenUsageLedger(require_provider_usage=True)
+            with patch.object(llm, '_client', proxy), llm.token_budget_scope(ledger):
+                self.assertEqual(llm.complete('Reflect', model='gpt-6.1-terra', max_tokens=4096,
+                    images=[b'\x89PNG\r\n\x1a\noriginal']), 'A concrete plan')
+                with self.assertRaises(ProviderIdentityMismatch):
+                    llm.complete('Again', model='gpt-6.1-terra', max_tokens=4096)
+            self.assertEqual(len(calls),2)
+            self.assertEqual(calls[0]['max_output_tokens'],4096)
+            self.assertEqual(calls[0]['reasoning'],{'effort':'medium'})
+            self.assertEqual(calls[0]['input'][0]['content'][1]['type'],'input_image')
+            self.assertNotIn('messages', calls[0])
+            self.assertNotIn('capability_overrides', calls[0])
+            self.assertNotIn('temperature', calls[0])
+            self.assertEqual(ledger.total_tokens,36)
+            usage=read_provider_usage(Path(tmp))
+            self.assertEqual(usage['responses_received'],2)
+            self.assertEqual(usage['total_tokens'],36)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -147,7 +188,10 @@ class WorkerTests(unittest.TestCase):
         self.assertNotEqual(rows[0]["identity"], rows[1]["identity"])
 
     def test_protocol_fields_cannot_be_overridden(self):
-        for options in ({"model": "another-model"}, {"extra_body": {"messages": []}}):
+        for options in ({"model": "another-model"}, {"extra_body": {"messages": []}},
+                        {"input": "replacement"}, {"extra_body": {"input": []}},
+                        {"extra_body": {"instructions": "replace controlled system"}},
+                        {"previous_response_id": "untracked-history"}):
             request = self.request()
             request["model"]["request_options"] = options
             command, result = self.run_worker(request)
@@ -187,6 +231,8 @@ class WorkerTests(unittest.TestCase):
             "name": "DeepSeek-V4-Flash", "transport": {
                 "entrypoint": f"{plugin}:create_client", "kwargs": {"path": str(calls)}},
             "request_options": {"seed": None, "temperature": 0.4, "max_tokens": 64,
+                                "api_mode": "chat", "disable_vision": False,
+                                "capability_overrides": {"supports_vision": True},
                                 "extra_body": {"example": True}},
             "allowed_response_models": ["scripted-response"],
         })
@@ -197,6 +243,8 @@ class WorkerTests(unittest.TestCase):
         for row in rows:
             self.assertEqual(row["model"], "DeepSeek-V4-Flash")
             self.assertNotIn("seed", row)
+            for sdk_option in ('api_mode','disable_vision','capability_overrides'):
+                self.assertNotIn(sdk_option,row)
             self.assertEqual(row["max_tokens"], 64)
             self.assertEqual(row["extra_body"], {"thinking": {"type": "disabled"}, "example": True})
         for case in result["cases"]:

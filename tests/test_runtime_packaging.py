@@ -52,6 +52,19 @@ print('installed API imports lazily')
         plan = json.loads(self.command("-m", "vrlbench", "simulate",
                                        "--config", str(LOCAL_CONFIG), "--plan", no_site=True))
         self.assertEqual(plan["model_calls_executed"], 0)
+        visual = json.loads(self.command("-m", "vrlbench", "run", "--preset", "gui-smoke",
+                                         "--model", "test-vision", "--plan", no_site=True))
+        self.assertEqual(visual["planned_cases"], 2)
+        self.assertEqual(visual["config"]["benchmark"]["factory"]["entrypoint"],
+                         "vrlbench.environments.browser_smoke:create_backend")
+
+    def test_native_batch_preset_works_without_checkout_or_optional_dependencies(self):
+        result = json.loads(self.command("-m", "vrlbench", "batch", "--preset", "miniwob-visual-v1",
+            "--model", "test-vision", "--jobs", "2", "--output-dir", str(self.root / "native"),
+            "--plan", no_site=True))
+        self.assertEqual(result["planned_cases"], 16)
+        self.assertTrue(result["config"]["benchmark"]["params"]["include_screenshot"])
+        self.assertEqual(result["model_calls_executed"], 0)
 
     def test_environment_import_resolves_packaged_locks_and_overlay(self):
         source = """
@@ -75,6 +88,20 @@ print(json.dumps({'sdk': vrlbench.__file__, 'module': dependency.__file__,
         self.assertEqual(result["issues"], [])
         self.assertIn("pyserini", result["packages"])
         self.assertIn("spacy", result["packages"])
+
+    def test_environment_bridge_does_not_expose_adjacent_actor_dependencies(self):
+        (self.installed / "actor_only_dependency.py").write_text("raise AssertionError('actor dependency leaked')")
+        source = """
+import os, subprocess, sys
+from vrlbench.environments.import_path import isolated_package_path
+with isolated_package_path() as root:
+    environment = dict(os.environ, PYTHONPATH=root)
+    subprocess.run([sys.executable, '-S', '-c',
+        "import vrlbench, importlib.util; assert importlib.util.find_spec('actor_only_dependency') is None"],
+        env=environment, check=True)
+print('isolated')
+"""
+        self.assertEqual(self.command("-c", source, no_site=True).strip(), "isolated")
 
     def test_installed_simulation_executes_local_configuration(self):
         output = self.root / "local-feedback"

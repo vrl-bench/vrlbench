@@ -8,8 +8,10 @@ loaders, action parsers, reset seeds and public feedback remain authoritative.
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import ExitStack
 import base64
 import json
+import logging
 import os
 from pathlib import Path
 import subprocess
@@ -43,6 +45,12 @@ class MiniWoBSession:
         headless = params.get("headless", True)
         if type(headless) is not bool:
             raise ValueError("MiniWoB headless must be a boolean")
+        self.include_screenshot = params.get("include_screenshot", False)
+        self.screenshot_only = params.get("observation_mode", "html") == "screenshot"
+        if self.screenshot_only:
+            self.include_screenshot = True
+        if type(self.include_screenshot) is not bool:
+            raise ValueError("MiniWoB include_screenshot must be a boolean")
         self._native = miniwob
         self._env = env if env is not None else miniwob._load_mw_stack()[0](
             subdomain=task, headless=headless,
@@ -58,15 +66,35 @@ class MiniWoBSession:
             "or agent.movemouse with one string literal argument. "
             + miniwob.MINIWOB_PUBLIC_INTERACTION_RULES
         )
+        if self.screenshot_only:
+            from .miniwob_gui import RULES
+            self.system_prompt = RULES
+            self.basic_rules = RULES + ' Each trial resets the native task; native reward grades success.'
         self.source_identity = {
             "benchmark": "miniwob", "task": task, "base_seed": seed,
             "trial_seed_mode": mode, "source_commit": SYNAPSE_SOURCE_COMMIT,
+            "reward_mode": "native_raw_action_budget",
         }
+        if self.include_screenshot:
+            self.source_identity["observation_mode"] = "html_and_screenshot"
+        if self.screenshot_only:
+            self.source_identity.update(observation_mode="screenshot", viewport=[640,480], action_space="gui_json_v2")
         self._identity = json.dumps(self.source_identity, sort_keys=True)
         self._actions: Any = None
         self._closed = False
         self._clock_started = False
         self._reset_seed: int | None = None
+        self._reward_metadata: dict[str, Any] = {}
+        self._browser_start_attempts = 0
+
+    def _action_budget_reward(self, metadata: Mapping[str, Any]) -> float:
+        # MiniWoB's time_independent reward is raw_reward. Suspending its
+        # timeout alone does not stop wall-clock discounting in endEpisode.
+        self._reward_metadata = {
+            "native_raw_reward": float(metadata["raw_reward"]),
+            "native_discounted_reward": float(metadata["env_reward"]),
+        } if metadata["done"] else {}
+        return float(metadata["raw_reward"])
 
     def reset(self, *, trial_index: int) -> TaskState:
         from vrlbench.runtime.reset_protocol import miniwob_reset_seed
@@ -76,7 +104,28 @@ class MiniWoBSession:
         if type(trial_index) is not int or trial_index < 0:
             raise ValueError("trial_index must be a nonnegative integer")
         self._reset_seed = miniwob_reset_seed(self._seed, trial_index, mode=self._mode)
-        text = self._env.reset(seed=self._reset_seed)
+        self._reward_metadata = {}
+        self._browser_start_attempts = 0
+        for attempt in range(3):
+            self._browser_start_attempts += 1
+            try:
+                text = self._env.reset(seed=self._reset_seed)
+                break
+            except Exception as exc:
+                # Keep Selenium optional in the actor interpreter. Retry only
+                # its explicit Chrome session-creation failure, before any
+                # action/model generation; other reset failures propagate.
+                if (type(exc).__module__ != 'selenium.common.exceptions'
+                        or type(exc).__name__ != 'SessionNotCreatedException'
+                        or attempt == 2):
+                    raise
+                logging.getLogger(__name__).warning(
+                    'Chrome session creation failed; retrying native reset (%s/3)', attempt + 2)
+                time.sleep(0.25 * (attempt + 1))
+        self._env.instance.reward_processor = self._action_budget_reward
+        if self.screenshot_only:
+            self._env.instance.driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',
+                {'width':640,'height':480,'deviceScaleFactor':1,'mobile':False})
         # The native action-budget track suspends the browser's wall-clock
         # timeout. Model latency must not consume an unreported action budget.
         self._env.instance.driver.execute_script(
@@ -87,10 +136,24 @@ class MiniWoBSession:
         self._actions = self._native._AgentActions(self._env, trial_index=trial_index)
         self._clock_started = False
         task = self._native._task_from_observation_html(str(text or ""), self._env.get_task())
-        return TaskState(task=task, observation=Observation(text=str(text or "")),
+        return TaskState(task=task, observation=self._observation(text),
                          identity=self._identity)
 
+    def _observation(self, text: str) -> Observation:
+        if self.screenshot_only:
+            text = "Use the attached screenshot. Click an input before typing."
+        image = self.capture_observation() if self.include_screenshot else None
+        if image is not None:
+            if len(image) < 24 or image[:16] != b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR":
+                raise RuntimeError("MiniWoB returned no native PNG screenshot")
+            width, height = int.from_bytes(image[16:20], "big"), int.from_bytes(image[20:24], "big")
+            text = f"{text or ''}\nScreenshot dimensions: {width} x {height} pixels."
+        return Observation(text=str(text or ""), image=image)
+
     def parse_response(self, raw: str) -> str:
+        if self.screenshot_only:
+            from .miniwob_gui import parse
+            return json.dumps(parse(raw), sort_keys=True)
         actions = self._native._parse_agent_actions(raw)
         if len(actions) != 1:
             raise ValueError("MiniWoB session.step accepts exactly one primitive Agent API action")
@@ -99,13 +162,29 @@ class MiniWoBSession:
     def step(self, action: str) -> Transition:
         if self._closed or self._actions is None or self._actions.done:
             raise RuntimeError("Reset MiniWoB before acting, and do not act after termination")
+        if self.screenshot_only:
+            from .miniwob_gui import PointerAction, parse
+            value = parse(action)
+            if not self._clock_started:
+                self._env.instance.start_time = time.time()
+                self._clock_started = True
+            if value['action'] == 'stop':
+                from synapse.envs.miniwob.action import MiniWoBTerminate
+                self._actions._step(MiniWoBTerminate(), json.dumps(value))
+            elif value['action'] in {'click','drag'}:
+                self._actions._step(PointerAction(value), json.dumps(value,sort_keys=True))
+            elif value['action'] == 'type':
+                self._actions.type(value['text'])
+            else:
+                self._actions.press(value['key'])
+            return Transition(self._observation(''), terminated=bool(self._actions.done))
         parsed = self._native._parse_agent_actions(self.parse_response(action))
         if not self._clock_started:
             self._env.instance.start_time = time.time()
             self._clock_started = True
         method, argument = parsed[0]
         getattr(self._actions, method)(argument)
-        return Transition(observation=Observation(text=str(self._actions.last_obs or "")),
+        return Transition(observation=self._observation(self._actions.last_obs),
                           terminated=bool(self._actions.done))
 
     def evaluate(self) -> bool:
@@ -120,6 +199,8 @@ class MiniWoBSession:
     def get_trial_metadata(self) -> dict[str, Any]:
         return {"base_seed": self._seed, "reset_seed": self._reset_seed,
                 "trial_seed_mode": self._mode,
+                "reward_mode": "native_raw_action_budget", **self._reward_metadata,
+                "native_browser_start_attempts": self._browser_start_attempts,
                 "environment_action_clock": "ao_horizon_only_native_timeout_suspended_episode_active"}
 
     def capture_observation(self) -> bytes:
@@ -298,18 +379,25 @@ class SubprocessSession:
         if not isinstance(python_executable, str) or not python_executable.strip():
             raise ValueError("environment_python must be a nonempty Python executable")
         env = os.environ.copy()
-        source_root = str(Path(__file__).resolve().parents[2])
+        from .import_path import isolated_package_path
+
+        self._imports = ExitStack()
+        source_root = self._imports.enter_context(isolated_package_path())
         # Do not leak the actor interpreter's stdlib/site-packages into an
         # environment running another Python version. Preserve only explicit
         # environment import roots supplied by the simulation configuration.
         env["PYTHONPATH"] = os.pathsep.join(filter(None, (source_root, environment_pythonpath)))
         env.pop("PYTHONHOME", None)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
-        self._process = subprocess.Popen(
-            [python_executable, "-m", "vrlbench.environments.session_worker"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None,
-            text=True, encoding="utf-8", env=env,
-        )
+        try:
+            self._process = subprocess.Popen(
+                [python_executable, "-m", "vrlbench.environments.session_worker"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None,
+                text=True, encoding="utf-8", env=env,
+            )
+        except BaseException:
+            self._imports.close()
+            raise
         self._closed = False
         self._score: float | None = None
         try:
@@ -446,6 +534,7 @@ class SubprocessSession:
                     self._process.wait()
             if self._process.stdout is not None:
                 self._process.stdout.close()
+            self._imports.close()
 
 
 __all__ = ["MiniWoBSession", "WebShopSession", "SubprocessSession", "make_session",

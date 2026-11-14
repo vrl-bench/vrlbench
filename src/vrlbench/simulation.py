@@ -134,7 +134,7 @@ def _available_checkpoints(output: Path) -> list[dict[str, Any]]:
     return list(found.values())
 
 
-def simulate(spec: SimulationSpec) -> SimulationResult:
+def simulate(spec: SimulationSpec, *, cancel_event: Any = None) -> SimulationResult:
     """Execute one memory system on a workload and retain its trial process.
 
     Inspect ``status`` or call ``require_complete()`` before comparing metrics.
@@ -159,6 +159,11 @@ def simulate(spec: SimulationSpec) -> SimulationResult:
         handle.write("\n")
     stdout_path, stderr_path = output / "stdout.log", output / "stderr.log"
     env = os.environ.copy()
+    # Browser crash reporting/cache writes must not depend on a writable login
+    # home (e.g. quota-limited clusters or a container with a mapped UID).
+    for variable, folder in (("XDG_CACHE_HOME", ".cache"), ("XDG_CONFIG_HOME", ".config")):
+        if not env.get(variable):
+            env[variable] = str(output / folder)
     # Preserve the caller's import roots even though the worker runs in its
     # output directory. Resolving paths is read-only and never imports plugins.
     package_root = str(Path(__file__).resolve().parent.parent)
@@ -176,7 +181,18 @@ def simulate(spec: SimulationSpec) -> SimulationResult:
                                        env=env, stdout=out, stderr=err, cwd=output,
                                        start_new_session=os.name == "posix")
             try:
-                returncode = process.wait(timeout=resolved.timeout_seconds)
+                deadline = time.monotonic() + resolved.timeout_seconds
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        status, error = "cancelled", {"type": "EvaluationCancelled", "message": "batch execution interrupted"}
+                        break
+                    remaining = max(0, deadline - time.monotonic())
+                    try:
+                        returncode = process.wait(timeout=min(remaining, 0.2) if cancel_event is not None else remaining)
+                        break
+                    except subprocess.TimeoutExpired:
+                        if time.monotonic() >= deadline:
+                            raise
             except subprocess.TimeoutExpired:
                 status, error = "timeout", {"type": "EvaluationTimeout", "message": "worker exceeded timeout_seconds"}
             finally:

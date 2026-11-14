@@ -113,10 +113,10 @@ def _uses_bigmodel_thinking_control(model: str) -> bool:
     return model.startswith(('glm-5', 'glm-4.7'))
 
 def _is_reasoning_model(model: str) -> bool:
-    return model.startswith('gpt-5.4') or _uses_bigmodel_thinking_control(model)
+    return model.startswith(('gpt-5.4', 'gpt-6')) or _uses_bigmodel_thinking_control(model)
 
 def _token_kwarg(model: str, max_tokens: int) -> dict:
-    if model.startswith('gpt-5.4'):
+    if model.startswith(('gpt-5.4', 'gpt-6')):
         return {'max_completion_tokens': max_tokens}
     return {'max_tokens': max_tokens}
 
@@ -139,10 +139,10 @@ def _reasoning_controls_sampling(model: str, extra_body: Optional[Mapping[str, A
     return _is_reasoning_model(model)
 
 def _supports_temperature(model: str) -> bool:
-    return not model.startswith('gpt-5.4')
+    return not model.startswith(('gpt-5.4', 'gpt-6'))
 
 def _supports_seed(model: str) -> bool:
-    return True
+    return not model.startswith('gpt-6')
 
 def _provider_stop(model: str, stop: str | list[str] | None) -> str | list[str] | None:
     if stop is None or model.startswith('gpt-5.4'):

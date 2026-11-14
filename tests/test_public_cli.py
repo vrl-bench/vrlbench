@@ -32,6 +32,44 @@ class PublicCLI(unittest.TestCase):
         self.assertIn("compare", output)
         self.assertIn("replay", output)
 
+    def test_run_alias_applies_model_overrides_without_execution(self):
+        result = json.loads(self.command("run", "--config", str(LOCAL_CONFIG),
+                                       "--model", "vision-test", "--base-url", "http://localhost:8000/v1",
+                                       "--api-key-env", "TEST_MODEL_KEY", "--plan", no_site=True))
+        self.assertEqual(result["config"]["model"]["name"], "vision-test")
+        self.assertEqual(result["config"]["model"]["base_url"], "http://localhost:8000/v1")
+        self.assertEqual(result["config"]["model"]["api_key_env"], "TEST_MODEL_KEY")
+        self.assertEqual(result["model_calls_executed"], 0)
+
+    def test_gui_preset_plans_without_browser_or_model_dependencies(self):
+        result = json.loads(self.command("run", "--preset", "gui-smoke", "--model", "test-vision", "--plan", no_site=True))
+        self.assertEqual(result["planned_cases"], 2)
+        self.assertEqual(result["config"]["model"]["name"], "test-vision")
+        self.assertEqual(result["config"]["benchmark"]["factory"]["entrypoint"],
+                         "vrlbench.environments.browser_smoke:create_backend")
+        self.assertEqual(result["model_calls_executed"], 0)
+
+    def test_native_preset_matches_editable_config_and_batch_plan_is_lazy(self):
+        result = json.loads(self.command("batch", "--preset", "miniwob-visual-v1",
+            "--output-dir", "/tmp/vrlbench-plan-only", "--jobs", "2", "--plan", no_site=True))
+        explicit = json.loads(self.command("run", "--config",
+            str(ROOT / "examples/configs/miniwob_visual.json"), "--output-dir", "/tmp/vrlbench-plan-only",
+            "--plan", no_site=True))
+        self.assertEqual(result["config"], explicit["config"])
+        self.assertEqual(result["planned_cases"], 16)
+        self.assertEqual(result["model_calls_executed"], 0)
+
+    def test_doctor_does_not_start_environment_or_create_output(self):
+        result = subprocess.run([sys.executable, "-S", "-m", "vrlbench", "doctor",
+                                 "--config", str(LOCAL_CONFIG)], cwd=ROOT,
+                                env=dict(os.environ, PYTHONPATH=str(ROOT / "src")),
+                                capture_output=True, text=True)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["model_calls_executed"], 0)
+        self.assertEqual(output["status"], "blocked")
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(any(c["name"] == "openai" and not c["ready"] for c in output["checks"]))
+
     def test_simulation_plan_does_not_import_or_execute_plugins(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -75,7 +113,7 @@ class PublicCLI(unittest.TestCase):
                 self.assertFalse(output.exists())
 
     def test_unsupported_commands_are_rejected(self):
-        for name in ("demo", "results", "plan", "run", "reproduce"):
+        for name in ("demo", "results", "plan", "reproduce"):
             with self.subTest(command=name):
                 result = subprocess.run(
                     [sys.executable, "-S", "-m", "vrlbench", name],

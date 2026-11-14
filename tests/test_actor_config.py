@@ -66,7 +66,7 @@ class ActorConfiguration(unittest.TestCase):
 
     def test_actor_parameters_resolve_without_loading_the_condenser_or_sdk(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             interpreter = root / "environment/bin/python"
             interpreter.parent.mkdir(parents=True)
             interpreter.symlink_to(sys.executable)
@@ -80,7 +80,7 @@ class ActorConfiguration(unittest.TestCase):
             path.write_text(json.dumps(configured.to_dict()))
             resolved = SimulationSpec.from_path(path)
             value = plan(resolved)["config"]
-            self.assertEqual(value["actor"]["params"]["condenser"]["entrypoint"], f"{root / 'condenser.py'}:create")
+            self.assertEqual(value["actor"]["params"]["condenser"]["entrypoint"], f"{(root / 'condenser.py').resolve()}:create")
             self.assertEqual(value["benchmark"]["params"]["environment_python"], str(root / "environment/bin/python"))
             replace(resolved, actor=ActorSpec()).validate()
             with self.assertRaisesRegex(ValueError, "max_total_tokens"):
@@ -110,8 +110,10 @@ class ActorConfiguration(unittest.TestCase):
                 environment_pythonpath=explicit_path)
             try:
                 environment = start.call_args.kwargs["env"]
-                self.assertEqual(environment["PYTHONPATH"],
-                                 os.pathsep.join((str(ROOT / "src"), explicit_path)))
+                import_root, supplied = environment["PYTHONPATH"].split(os.pathsep)
+                self.assertEqual(supplied, explicit_path)
+                self.assertEqual((Path(import_root) / 'vrlbench').resolve(), ROOT / 'src/vrlbench')
+                self.assertNotEqual(import_root, str(ROOT / 'src'))
                 self.assertNotIn("PYTHONHOME", environment)
             finally:
                 session.close()

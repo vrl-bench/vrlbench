@@ -98,6 +98,14 @@ VRL-Bench 将这一范式实现为**可控、可重复的多轮试错仿真**。
 
 ## 快速开始
 
+建议从[原生 MiniWoB 批量评测](docs/QUICKSTART.md#run-a-native-benchmark-comparison)开始：
+自动安装固定版本环境，在 8 类任务的 16 个原生 case 上运行 Retry 与记忆方法对照，
+支持截图与 HTML 多模态输入、任务并行、执行恢复、统计比较和离线回放。
+纯视觉 GUI 评测使用 [`miniwob-gui-v1`](docs/QUICKSTART.md#screenshot-only-gui-evaluation)：
+只提供截图与任务文本，通过坐标点击、输入、按键和拖动操作，不提供 HTML/XPath。
+也可以使用[容器流程](docs/QUICKSTART.md#container-workflow)，避免手工配置浏览器依赖。
+
+
 选择任务环境，配置模型与记忆方法，并明确填写总尝试次数 `trials` 和每轮行动上限 `max_environment_steps`，再用 `simulate` → `inspect` → `compare` 完成在线计算机操作任务的评测。
 
 内置仿真统一使用 OpenHands 执行动作；VRL-Bench 管理试错轮次、环境、记忆、预算和评估，每轮启动新的 OpenHands 会话。模拟器使用 Python 3.12+，模型需支持工具调用；OSWorld 还需要视觉能力。原生环境可保留各自的 Python 依赖，通过独立进程接入。

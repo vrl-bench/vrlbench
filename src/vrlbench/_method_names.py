@@ -46,7 +46,7 @@ def is_reserved_memory_name(name: str) -> bool:
 
 def validate_method_params(name: str, params: Mapping[str, Any]) -> None:
     """Reject unsupported reference options before starting an environment."""
-    allowed = {"max_tokens"} if canonical_method_name(name) == "reflexion" else set()
+    allowed = {"max_tokens", "max_images", "max_trajectory_chars"} if canonical_method_name(name) == "reflexion" else set()
     unknown = set(params) - allowed
     if unknown:
         raise ValueError(f"unknown {name} memory parameters: {sorted(unknown)}")
@@ -54,3 +54,11 @@ def validate_method_params(name: str, params: Mapping[str, Any]) -> None:
         value = params["max_tokens"]
         if type(value) is not int or value < 1:
             raise ValueError("reflexion max_tokens must be a positive integer")
+    if "max_images" in params:
+        value = params["max_images"]
+        if type(value) is not int or value < 2:
+            raise ValueError("reflexion max_images must be an integer of at least 2")
+    if "max_trajectory_chars" in params:
+        value = params["max_trajectory_chars"]
+        if value is not None and (type(value) is not int or value < 1024):
+            raise ValueError("reflexion max_trajectory_chars must be null or an integer of at least 1024")

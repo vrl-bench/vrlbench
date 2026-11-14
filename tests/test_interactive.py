@@ -222,6 +222,22 @@ class InteractiveActorTests(unittest.TestCase):
         self.assertTrue(metadata["environment_terminated"])
         self.assertFalse(metadata["environment_truncated"])
 
+    def test_native_metadata_is_preserved_without_overwriting_actor_ledger(self):
+        session = FakeSession(done=True, outcome=True)
+        native = {"native_raw_reward": 1.0, "native_discounted_reward": 0.0,
+                  "environment_steps": 999}
+        session.get_trial_metadata = lambda: native
+        actor = self.actor(session, horizon=1)
+        actor()
+        metadata = actor.get_trial_metadata()
+        self.assertEqual(metadata["environment_steps"], 1)
+        self.assertEqual(metadata["environment_metadata"], native)
+        native["native_raw_reward"] = -1.0
+        self.assertEqual(metadata["environment_metadata"]["native_raw_reward"], 1.0)
+        session.get_trial_metadata = lambda: None
+        with self.assertRaisesRegex(TypeError, "must be a mapping"):
+            actor.get_trial_metadata()
+
     def test_verified_horizon_success_has_consistent_close_state(self):
         actor = self.actor(FakeSession(outcome=True), horizon=1)
         actor()

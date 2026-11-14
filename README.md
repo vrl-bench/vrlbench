@@ -150,6 +150,12 @@ hard to observe in one-off use or cross-task experience reuse.
 
 ## Quick start
 
+Start with the [native MiniWoB batch workflow](docs/QUICKSTART.md#run-a-native-benchmark-comparison):
+provision a pinned browser environment, run matched Retry and memory conditions
+on 16 native cases, resume interrupted jobs, then compare and replay the results.
+Choose the [screenshot-only GUI track](docs/QUICKSTART.md#screenshot-only-gui-evaluation)
+for coordinate clicks, typing, keys and dragging, or the HTML-plus-screenshot track.
+
 Select a workload, configure the model and memory method, and explicitly set
 `trials` and `max_environment_steps`. Use the same `simulate` → `inspect` →
 `compare` workflow for online computer-control tasks.

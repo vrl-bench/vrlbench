@@ -34,6 +34,64 @@ def _persist_request_event(callback: Any, *args: Any) -> Any:
         ) from exc
 
 
+def _responses_request(kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Translate native text/image memory calls to the declared Responses API."""
+    result = dict(kwargs)
+    messages = result.pop('messages')
+    inputs = []
+    for message in messages:
+        role, content = message['role'], message.get('content', '')
+        if isinstance(content, str):
+            inputs.append({'role': role, 'content': content})
+            continue
+        parts = []
+        for item in content:
+            if item['type'] == 'text':
+                parts.append({'type': 'output_text' if role == 'assistant' else 'input_text',
+                              'text': item['text']})
+            elif item['type'] == 'image_url':
+                image = item['image_url']
+                value = {'type': 'input_image', 'image_url': image['url']}
+                if 'detail' in image:
+                    value['detail'] = image['detail']
+                parts.append(value)
+            else:
+                raise ValueError(f'unsupported native Responses content type: {item["type"]}')
+        inputs.append({'role': role, 'content': parts})
+    result['input'] = inputs
+    for key in ('max_tokens', 'max_completion_tokens'):
+        if key in result:
+            result['max_output_tokens'] = result.pop(key)
+    if 'reasoning_effort' in result:
+        result['reasoning'] = {'effort': result.pop('reasoning_effort')}
+    if result.pop('n', 1) != 1 or result.pop('stream', False):
+        raise ValueError('native Responses calls require one non-streaming completion')
+    return result
+
+
+def _response_completion(response: Any) -> Any:
+    """Keep the real provider model and usage in the native completion shape."""
+    def field(value, key):
+        return value.get(key) if isinstance(value, Mapping) else getattr(value, key, None)
+    text = field(response, 'output_text')
+    if not isinstance(text, str):
+        text = ''.join(field(part, 'text') or '' for item in field(response, 'output') or []
+                       if field(item, 'type') == 'message'
+                       for part in field(item, 'content') or [] if field(part, 'type') == 'output_text')
+    usage = field(response, 'usage')
+    normalized = SimpleNamespace(prompt_tokens=field(usage, 'input_tokens'),
+                                 completion_tokens=field(usage, 'output_tokens'),
+                                 total_tokens=field(usage, 'total_tokens'))
+    status = field(response, 'status')
+    incomplete_reason = field(field(response, 'incomplete_details'), 'reason')
+    reason = ('stop' if status == 'completed' else
+              'length' if status == 'incomplete' and incomplete_reason == 'max_output_tokens' else
+              'content_filter' if incomplete_reason == 'content_filter' else 'incomplete')
+    return SimpleNamespace(id=field(response, 'id'), model=field(response, 'model'),
+        choices=[SimpleNamespace(message=SimpleNamespace(content=text), finish_reason=reason)],
+        usage=normalized)
+
+
 class _CompletionProxy:
     def __init__(self, owner: "_ClientProxy", *, apply_options: bool = True) -> None:
         self.owner = owner
@@ -43,6 +101,9 @@ class _CompletionProxy:
         options = self.owner.options if self.apply_options else {}
         forwarded = dict(kwargs)
         for key, value in options.items():
+            if key in {'api_mode', 'capability_overrides', 'disable_vision'}:
+                # Select the API locally; never leak SDK capability fields.
+                continue
             if value is None:
                 forwarded.pop(key, None)
             elif key == "extra_body" and isinstance(value, dict):
@@ -62,7 +123,14 @@ class _CompletionProxy:
             declared = effective.get("max_completion_tokens", effective.get("max_tokens"))
             if admitted is not None and (type(declared) is not int or declared > admitted or declared < 1):
                 raise ValueError("request_options cannot increase or remove a strict completion-token allowance")
-        create = self.owner.client.chat.completions.create
+        responses = self.apply_options and options.get('api_mode') == 'responses'
+        if responses:
+            create = getattr(getattr(self.owner.client, 'responses', None), 'create', None)
+            if not callable(create):
+                raise TypeError('api_mode=responses requires a transport with responses.create()')
+            forwarded = _responses_request(forwarded)
+        else:
+            create = self.owner.client.chat.completions.create
         journal = self.owner.journal
         request_id = _persist_request_event(journal.begin) if journal is not None else None
         try:
@@ -71,6 +139,14 @@ class _CompletionProxy:
             if journal is not None:
                 _persist_request_event(journal.failure, request_id, exc)
             raise
+        if responses:
+            raw = response
+            try:
+                response = _response_completion(raw)
+            except BaseException:
+                if journal is not None:
+                    _persist_request_event(journal.response, request_id, raw)
+                raise
         if journal is not None:
             _persist_request_event(journal.response, request_id, response)
         return response
@@ -109,9 +185,10 @@ def configure_model(model: Mapping[str, Any], *,
         raise TypeError("model.request_options must be an object")
     if options.get("extra_body") is not None and not isinstance(options["extra_body"], dict):
         raise TypeError("request_options.extra_body must be an object or null")
-    forbidden = {"model", "messages", "stream"} & set(options)
+    protocol = {"model", "messages", "input", "instructions", "previous_response_id", "conversation", "prompt", "stream"}
+    forbidden = protocol & set(options)
     if isinstance(options.get("extra_body"), dict):
-        forbidden |= {"model", "messages", "stream"} & set(options["extra_body"])
+        forbidden |= protocol & set(options["extra_body"])
     if forbidden:
         raise ValueError(f"request_options cannot override protocol fields: {sorted(forbidden)}")
     _validate_single_completion_count(options)

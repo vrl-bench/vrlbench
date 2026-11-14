@@ -96,6 +96,23 @@ class WebArenaAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "reset_factory"):
             WebArenaSession(self.case, {})
 
+    def test_visual_mode_supplies_native_screenshots_on_reset_and_step(self):
+        session = self.session(include_screenshot=True)
+        first = session.reset(trial_index=0)
+        self.assertEqual(first.observation.image, session.env.snapshot)
+        self.assertIn("[1]", first.observation.text)
+        transition = session.step("click [1]")
+        self.assertEqual(transition.observation.image, session.env.snapshot)
+        self.assertIsNone(self.session().reset(trial_index=0).observation.image)
+
+    def test_visual_mode_rejects_invalid_configuration_and_missing_image(self):
+        with self.assertRaisesRegex(ValueError, "include_screenshot"):
+            self.session(include_screenshot="yes")
+        session = self.session(include_screenshot=True)
+        session.env.snapshot = b"not a screenshot"
+        with self.assertRaisesRegex(RuntimeError, "PNG"):
+            session.reset(trial_index=0)
+
     def test_configuration_and_comparison_preserve_task_identity(self):
         from copy import deepcopy
         from dataclasses import replace
@@ -106,6 +123,10 @@ class WebArenaAdapterTests(unittest.TestCase):
         spec = SimulationSpec(WorkloadSpec("webarena", [self.case], params), ModelSpec("fixture"),
                               trials=6, max_environment_steps=15)
         self.assertEqual(plan(spec)["model_calls_executed"], 0)
+        visual = replace(spec, workload=replace(spec.workload, params={**params, "include_screenshot": True}))
+        self.assertTrue(plan(visual)["config"]["benchmark"]["params"]["include_screenshot"])
+        with self.assertRaisesRegex(ValueError, "include_screenshot"):
+            replace(spec, workload=replace(spec.workload, params={**params, "include_screenshot": "yes"})).validate()
         for invalid in (None, "", " ", 3):
             with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "judge_model"):
                 replace(spec, workload=replace(spec.workload, params={**params, "judge_model": invalid})).validate()
@@ -114,7 +135,7 @@ class WebArenaAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "completed SDK"):
             plan(replace(spec, shared_t1_dir=self.directory.name))
         relative = replace(spec, workload=replace(spec.workload, cases=[{**self.case, "config_file": "case.json"}]))
-        self.assertEqual(relative.resolved(Path(self.directory.name)).workload.cases[0]["config_file"], str(self.path))
+        self.assertEqual(relative.resolved(Path(self.directory.name)).workload.cases[0]["config_file"], str(self.path.resolve()))
         case = {"case_id": self.case["case_id"], "task": "webarena",
                 "trials": [{"trial": 0, "success": True, "trajectory": "done"}],
                 "source_identity": self.session().source_identity}

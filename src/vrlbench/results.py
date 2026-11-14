@@ -378,6 +378,7 @@ def _component_identity_check(payloads: Sequence[Mapping[str, Any]], context: di
         sources.append(recorded)
 
     factories = {
+        "actor": (context.get("actor") or {}).get("factory"),
         "benchmark": context["benchmark"].get("factory") if isinstance(context["benchmark"], Mapping) else None,
         "model_transport": context["model"].get("transport") if isinstance(context["model"], Mapping) else None,
         "actor_condenser": (context.get("actor") or {}).get("params", {}).get("condenser"),

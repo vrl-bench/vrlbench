@@ -67,6 +67,42 @@ def _source_interaction_log(benchmark: str, trajectory: str, *, actor_trajectory
     lines.append('STATUS: FAIL')
     return '\n'.join(lines).strip()
 
+def _clip_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    marker = '\n[... omitted ...]\n'
+    if limit < len(marker) + 2:
+        return text[:max(0, limit)]
+    first = (limit - len(marker)) // 2
+    last = limit - len(marker) - first
+    return text[:first] + marker + text[-last:]
+
+def _bounded_interaction_log(trajectory: str, limit: int) -> str:
+    """Bound writer input without silently dropping entire intermediate steps."""
+    evidence = parse_policy_trajectory(trajectory)
+    if evidence is None:
+        raise ValueError('bounded reflection requires canonical executed A-O evidence')
+    steps = evidence['steps']
+    header = ('Bounded transcript: observation text and long action text may be omitted. '
+              'Step order and indices are retained when the budget permits. '
+              'Full original evidence remains in the evaluation artifacts.\nTask: '
+              + _clip_text(evidence['task'], limit // 6) + '\nInitial observation:\n')
+    action_limit = limit // (2 * max(1, len(steps)))
+    labels = [f'\nStep {i} action:\n{_clip_text(step["action"], action_limit)}\nObservation:\n'
+              for i, step in enumerate(steps, 1)]
+    suffix = '\nSTATUS: FAIL'
+    fixed = len(header) + sum(map(len, labels)) + len(suffix)
+    if fixed >= limit:
+        return _clip_text(header + ''.join(labels) + suffix, limit)
+    observation_limit = (limit - fixed) // (len(steps) + 1)
+    parts = [header, _clip_text(evidence['initial_observation'], observation_limit)]
+    for label, step in zip(labels, steps):
+        parts.extend([label, _clip_text(step['observation'], observation_limit)])
+    parts.append(suffix)
+    result = ''.join(parts)
+    assert len(result) <= limit
+    return result
+
 def _writer_prompt(benchmark: str, source_log: str, entries: Sequence[str]) -> str:
     if benchmark == 'webshop':
         template = _load_prompt_artifact('webshop_writer')
@@ -96,10 +132,18 @@ def _reflection_text(raw: str) -> str:
 class Reflexion(ERSlot):
     """Failure reflection with native or explicitly adapted writer prompts."""
 
-    def __init__(self, *, max_tokens: int = _UPSTREAM_REFLECTION_MAX_TOKENS) -> None:
+    def __init__(self, *, max_tokens: int = _UPSTREAM_REFLECTION_MAX_TOKENS,
+                 max_images: int = 8, max_trajectory_chars: int | None = 60000) -> None:
         if type(max_tokens) is not int or max_tokens < 1:
             raise ValueError('reflexion max_tokens must be a positive integer')
         self.max_tokens = max_tokens
+        if type(max_images) is not int or max_images < 2:
+            raise ValueError('reflexion max_images must be an integer of at least 2')
+        self.max_images = max_images
+        if max_trajectory_chars is not None and (type(max_trajectory_chars) is not int
+                                                or max_trajectory_chars < 1024):
+            raise ValueError('reflexion max_trajectory_chars must be null or an integer of at least 1024')
+        self.max_trajectory_chars = max_trajectory_chars
         self._entries = []
         self._benchmark = None
 
@@ -120,10 +164,21 @@ class Reflexion(ERSlot):
         if not bool((metadata or {}).get('has_future_trial', trial_index + 1 < total_trials)):
             return
         source_log = _source_interaction_log(benchmark, trajectory, actor_trajectory=actor_trajectory)
+        if self.max_trajectory_chars is not None and len(source_log) > self.max_trajectory_chars:
+            source_log = _bounded_interaction_log(trajectory, self.max_trajectory_chars)
         prompt = _writer_prompt(benchmark, source_log, _visible_entries(self._entries))
         from vrlbench.methods import load_observation_images
 
         observations = load_observation_images(metadata or {})
+        if len(observations) > self.max_images:
+            count = len(observations)
+            # Verify every original above, then sample evenly with both endpoints.
+            # Keep native indices in the prompt; never imply omitted frames were seen.
+            observations = [observations[i * (count - 1) // (self.max_images - 1)]
+                            for i in range(self.max_images)]
+            prompt += (f'\n\nVisual input budget: uniformly sampled {len(observations)} '
+                       f'of {count} original frames, including the first and last. '
+                       'Intermediate frames are omitted; the textual interaction log remains available.')
         if observations:
             prompt += ("\n\nAttached screenshots are the actor's original visual observations, "
                        "in this order: " + ", ".join(str(index) for index, _ in observations)
